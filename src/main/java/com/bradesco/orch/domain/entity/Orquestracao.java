@@ -113,6 +113,46 @@ public class Orquestracao {
         this.status = StatusOrquestracao.ERRO;
     }
 
+    /**
+     * Suspende a etapa informada em {@link StatusEtapa#PENDENTE_DE_INTERACAO},
+     * gravando o resultado parcial (se houver) em {@code callback.response}.
+     *
+     * <p>A orquestração <b>não é finalizada nem marcada como erro</b>: permanece
+     * {@code EM_EXECUCAO}, aguardando uma ação humana. Nenhuma próxima etapa é
+     * transicionada nem publicada — a suspensão interrompe o avanço neste ponto.</p>
+     */
+    public void suspenderPorInteracao(String nome, Object response) {
+        Etapa atual = exigirEtapa(nome);
+        atual.setStatus(StatusEtapa.PENDENTE_DE_INTERACAO);
+        if (response != null) {
+            if (atual.getCallback() == null) {
+                atual.setCallback(new RespostaEtapa(response));
+            } else {
+                atual.getCallback().setResponse(response);
+            }
+        }
+        this.status = StatusOrquestracao.EM_EXECUCAO;
+    }
+
+    /**
+     * Retoma a etapa suspensa por interação humana, registrando a aprovação e
+     * transicionando-a de volta para {@code PENDENTE} (apta a ser reprocessada e
+     * seguir o fluxo normal via fila).
+     *
+     * @throws IllegalStateException se a etapa não estiver em
+     *         {@code PENDENTE_DE_INTERACAO} (transição inválida — ex.: já
+     *         aprovada/concluída, ou nunca chegou a esse estado).
+     */
+    public void retomarPorInteracao(String nome, RegistroInteracao registroInteracao) {
+        Etapa atual = exigirEtapa(nome);
+        if (atual.getStatus() != StatusEtapa.PENDENTE_DE_INTERACAO) {
+            throw new IllegalStateException(
+                    "Etapa " + nome + " nao esta PENDENTE_DE_INTERACAO (estado atual: " + atual.getStatus() + ")");
+        }
+        atual.setInteracao(registroInteracao);
+        atual.setStatus(StatusEtapa.PENDENTE);
+    }
+
     private Etapa exigirEtapa(String nome) {
         Etapa atual = etapaAtual(nome);
         if (atual == null) {

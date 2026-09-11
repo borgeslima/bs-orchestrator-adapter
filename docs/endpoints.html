@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>orch-poc · Endpoints REST</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+        <div class="brand">
+            <h1><span class="dot"></span> orch-poc</h1>
+            <span class="ver">v1.0.0</span>
+        </div>
+        <nav>
+            <div class="group-title">Documentação</div>
+            <a href="index.html">Fluxo de Orquestração</a>
+            <a href="endpoints.html" class="active">Endpoints REST</a>
+            <a href="sobre.html">Sobre o projeto</a>
+
+            <div class="group-title">Nesta página</div>
+            <a href="#base" class="sub">Base &amp; convenções</a>
+            <a href="#iniciar" class="sub">POST /cap-giro</a>
+            <a href="#consultar" class="sub">GET /cap-giro/{id}</a>
+            <a href="#etapas" class="sub">GET /{id}/etapas</a>
+            <a href="#modelos" class="sub">Modelos de dados</a>
+            <a href="#swagger" class="sub">Swagger / OpenAPI</a>
+        </nav>
+    </aside>
+
+    <!-- ================= CONTEÚDO ================= -->
+    <main class="content">
+        <h1>Endpoints REST</h1>
+        <p class="lead">
+            Todos os endpoints são expostos por <code>CapGiroController</code> sob o prefixo
+            <code>/cap-giro</code>. As respostas usam JSON.
+        </p>
+
+        <!-- ---------- Base ---------- -->
+        <h2 id="base">Base &amp; convenções</h2>
+        <table>
+            <tbody>
+                <tr><th>Base path</th><td><code>/cap-giro</code></td></tr>
+                <tr><th>Porta padrão</th><td><code>8081</code> (variável <code>SERVER_PORT</code>)</td></tr>
+                <tr><th>Content-Type</th><td><code>application/json</code></td></tr>
+                <tr><th>Correlação</th><td>Opcional via <code>correlationId</code> no corpo de início; gerado automaticamente se ausente.</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ---------- POST ---------- -->
+        <h2 id="iniciar">Iniciar orquestração</h2>
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <span class="path">/cap-giro</span>
+        </div>
+        <p>Cria e dispara uma orquestração de cap-giro de forma <strong>assíncrona</strong>. Não aguarda a conclusão das etapas.</p>
+
+        <h3>Request body <span class="pill">opcional</span></h3>
+        <pre><code>{
+  "correlationId": "a1b2c3d4-..."   // opcional; se ausente, gera um UUID
+}</code></pre>
+        <p>O corpo inteiro é opcional. Enviar <code>POST /cap-giro</code> sem body é válido.</p>
+
+        <h3>Respostas</h3>
+        <table>
+            <thead><tr><th>Código</th><th>Descrição</th><th>Body</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="pill ok">202</span> Accepted</td>
+                    <td>Orquestração aceita para processamento.</td>
+                    <td><code>IniciarOrquestracaoResponse</code></td>
+                </tr>
+            </tbody>
+        </table>
+        <pre><code>{
+  "orquestracaoId": "665f1c2a9b4e2a0012a3b4c5"
+}</code></pre>
+
+        <h3>Exemplo</h3>
+        <pre><code>curl -i -X POST http://localhost:8081/cap-giro \
+  -H "Content-Type: application/json" \
+  -d '{ "correlationId": "pedido-42" }'</code></pre>
+
+        <!-- ---------- GET completo ---------- -->
+        <h2 id="consultar">Consultar orquestração completa</h2>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="path">/cap-giro/{orquestracaoId}</span>
+        </div>
+        <p>Retorna a orquestração completa: dados gerais e a lista de etapas com seus estados.</p>
+
+        <h3>Parâmetros de path</h3>
+        <table>
+            <thead><tr><th>Nome</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>orquestracaoId</code></td><td>string</td><td>Id retornado no início da orquestração.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Respostas</h3>
+        <table>
+            <thead><tr><th>Código</th><th>Descrição</th><th>Body</th></tr></thead>
+            <tbody>
+                <tr><td><span class="pill ok">200</span> OK</td><td>Orquestração encontrada.</td><td><code>OrquestracaoResponse</code></td></tr>
+                <tr><td><span class="pill err">404</span> Not Found</td><td>Orquestração não existe.</td><td>—</td></tr>
+            </tbody>
+        </table>
+        <pre><code>{
+  "orquestracaoId": "665f1c2a9b4e2a0012a3b4c5",
+  "name": "baas:cap-giro",
+  "order": 0,
+  "status": "EM_EXECUCAO",
+  "dataCriacao": "2026-09-11T12:00:00Z",
+  "dataAtualizacao": "2026-09-11T12:00:03Z",
+  "etapas": [
+    {
+      "name": "baas:etapa:cap-giro:oferta",
+      "order": 0,
+      "status": "CONCLUIDA",
+      "tentativasRealizadas": 1,
+      "limiteRetentativas": 3,
+      "callbackResponse": { "id": "..." },
+      "interacao": null
+    }
+  ]
+}</code></pre>
+
+        <!-- ---------- GET etapas ---------- -->
+        <h2 id="etapas">Consultar apenas as etapas</h2>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <span class="path">/cap-giro/{orquestracaoId}/etapas</span>
+        </div>
+        <p>Retorna somente a lista de etapas (<code>EtapaResponseView</code>) da orquestração.</p>
+
+        <h3>Respostas</h3>
+        <table>
+            <thead><tr><th>Código</th><th>Descrição</th><th>Body</th></tr></thead>
+            <tbody>
+                <tr><td><span class="pill ok">200</span> OK</td><td>Etapas encontradas.</td><td><code>List&lt;EtapaResponseView&gt;</code></td></tr>
+                <tr><td><span class="pill err">404</span> Not Found</td><td>Orquestração não existe.</td><td>—</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ---------- Modelos ---------- -->
+        <h2 id="modelos">Modelos de dados</h2>
+
+        <h3>OrquestracaoResponse</h3>
+        <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>orquestracaoId</code></td><td>string</td><td>Id da orquestração.</td></tr>
+                <tr><td><code>name</code></td><td>string</td><td>Nome da orquestração.</td></tr>
+                <tr><td><code>order</code></td><td>int</td><td>Ordem/sequência.</td></tr>
+                <tr><td><code>status</code></td><td>string</td><td>PENDENTE, EM_EXECUCAO, CONCLUIDA, ERRO.</td></tr>
+                <tr><td><code>dataCriacao</code></td><td>Instant</td><td>Data de criação.</td></tr>
+                <tr><td><code>dataAtualizacao</code></td><td>Instant</td><td>Última atualização.</td></tr>
+                <tr><td><code>etapas</code></td><td>EtapaResponseView[]</td><td>Etapas da orquestração.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>EtapaResponseView</h3>
+        <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>name</code></td><td>string</td><td>Nome canônico da etapa.</td></tr>
+                <tr><td><code>order</code></td><td>int</td><td>Ordem da etapa.</td></tr>
+                <tr><td><code>status</code></td><td>string</td><td>AGUARDANDO, PENDENTE, EM_EXECUCAO, PENDENTE_DE_INTERACAO, CONCLUIDA, ERRO.</td></tr>
+                <tr><td><code>tentativasRealizadas</code></td><td>int</td><td>Tentativas já executadas.</td></tr>
+                <tr><td><code>limiteRetentativas</code></td><td>int</td><td>Limite configurado (padrão 3).</td></tr>
+                <tr><td><code>callbackResponse</code></td><td>object</td><td>Payload livre retornado pela etapa.</td></tr>
+                <tr><td><code>interacao</code></td><td>InteracaoResponseView</td><td>Presente só após retomada por aprovação humana.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>InteracaoResponseView</h3>
+        <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>aprovadoPor</code></td><td>string</td><td>Identificador de quem aprovou.</td></tr>
+                <tr><td><code>aprovadoEm</code></td><td>Instant</td><td>Momento da aprovação.</td></tr>
+                <tr><td><code>observacao</code></td><td>string</td><td>Observação livre.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>IniciarOrquestracaoResponse</h3>
+        <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>orquestracaoId</code></td><td>string</td><td>Id da orquestração criada.</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ---------- Swagger ---------- -->
+        <h2 id="swagger">Swagger / OpenAPI</h2>
+        <p>A API é documentada com springdoc-openapi. Com a aplicação em execução:</p>
+        <table>
+            <tbody>
+                <tr><th>Swagger UI</th><td><code>/swagger-ui.html</code></td></tr>
+                <tr><th>OpenAPI JSON</th><td><code>/v3/api-docs</code></td></tr>
+            </tbody>
+        </table>
+        <div class="note tip">
+            <strong>Dica.</strong> Os paths do Swagger são configuráveis via
+            <code>SWAGGER_UI_PATH</code> e <code>API_DOCS_PATH</code>.
+        </div>
+
+        <footer class="docfooter">
+            <span>orch-poc · Documentação v1.0.0</span>
+            <span>Pacote <code>com.bradesco.orch</code></span>
+        </footer>
+    </main>
+</div>
+</body>
+</html>

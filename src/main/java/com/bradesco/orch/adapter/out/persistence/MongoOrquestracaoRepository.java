@@ -1,6 +1,7 @@
 package com.bradesco.orch.adapter.out.persistence;
 
 import com.bradesco.orch.domain.entity.Orquestracao;
+import com.bradesco.orch.domain.entity.RegistroInteracao;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
 import com.mongodb.client.result.UpdateResult;
@@ -65,6 +66,29 @@ public class MongoOrquestracaoRepository implements OrquestracaoRepository {
         boolean venceu = res.getModifiedCount() == 1L;
         if (!venceu) {
             log.debug("Transicao atomica nao aplicada (etapa {} ja fora de PENDENTE)", etapa);
+        }
+        return venceu;
+    }
+
+    @Override
+    public boolean transicionarEtapaDeInteracaoParaPendente(String orquestracaoId, String etapa,
+                                                             RegistroInteracao registroInteracao) {
+        Query q = new Query(Criteria.where("_id").is(orquestracaoId)
+                .and("etapas").elemMatch(Criteria.where("name").is(etapa)
+                        .and("status").is(StatusEtapa.PENDENTE_DE_INTERACAO.name())));
+        Update u = new Update()
+                .set("etapas.$.status", StatusEtapa.PENDENTE.name())
+                .set("etapas.$.interacao", new RegistroInteracaoDocument(
+                        registroInteracao.getAprovadoPor(),
+                        registroInteracao.getAprovadoEm(),
+                        registroInteracao.getObservacao()))
+                .inc("version", 1)
+                .currentDate("dataAtualizacao");
+
+        UpdateResult res = mongoTemplate.updateFirst(q, u, OrquestracaoDocument.class);
+        boolean venceu = res.getModifiedCount() == 1L;
+        if (!venceu) {
+            log.debug("Transicao de aprovacao nao aplicada (etapa {} ja fora de PENDENTE_DE_INTERACAO)", etapa);
         }
         return venceu;
     }

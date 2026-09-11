@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>orch-poc · Fluxo de Orquestração</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+        <div class="brand">
+            <h1><span class="dot"></span> orch-poc</h1>
+            <span class="ver">v1.0.0</span>
+        </div>
+        <nav>
+            <div class="group-title">Documentação</div>
+            <a href="index.html" class="active">Fluxo de Orquestração</a>
+            <a href="endpoints.html">Endpoints REST</a>
+            <a href="sobre.html">Sobre o projeto</a>
+
+            <div class="group-title">Nesta página</div>
+            <a href="#visao" class="sub">Visão geral</a>
+            <a href="#arquitetura" class="sub">Arquitetura</a>
+            <a href="#etapas" class="sub">As 4 etapas</a>
+            <a href="#estados" class="sub">Máquina de estados</a>
+            <a href="#fluxo" class="sub">Fluxo passo a passo</a>
+            <a href="#idempotencia" class="sub">Idempotência e retry</a>
+            <a href="#interacao" class="sub">Interação humana</a>
+        </nav>
+    </aside>
+
+    <!-- ================= CONTEÚDO ================= -->
+    <main class="content">
+        <h1>Fluxo de Orquestração</h1>
+        <p class="lead">
+            O <strong>orch-poc</strong> é uma prova de conceito que orquestra o processo de
+            <em>capital de giro</em> (cap-giro) em etapas assíncronas, usando MongoDB como fonte
+            da verdade e Azure Service Bus como transporte entre etapas.
+        </p>
+
+        <!-- ---------- Visão geral ---------- -->
+        <h2 id="visao">Visão geral</h2>
+        <p>
+            Uma orquestração representa uma jornada de negócio composta por etapas ordenadas.
+            Ao ser iniciada via REST, ela é persistida e a primeira etapa é publicada em uma fila.
+            Um listener consome a mensagem, executa a etapa, grava o resultado e publica a próxima —
+            repetindo o ciclo até a última etapa concluir a orquestração.
+        </p>
+        <div class="note">
+            <strong>Assíncrono por natureza.</strong> A chamada REST que inicia a orquestração
+            responde <code>202 Accepted</code> imediatamente, sem aguardar as etapas. O
+            acompanhamento é feito por consulta (<a href="endpoints.html">endpoints</a>).
+        </div>
+
+        <!-- ---------- Arquitetura ---------- -->
+        <h2 id="arquitetura">Arquitetura</h2>
+        <p>
+            O projeto segue <strong>Arquitetura Hexagonal (Ports &amp; Adapters)</strong>. O domínio é
+            puro (sem framework); os casos de uso orquestram ports; e os adapters lidam com REST,
+            MongoDB, Service Bus e HTTP externo.
+        </p>
+        <div class="cards">
+            <div class="card">
+                <h3>Domínio</h3>
+                <p><code>Orquestracao</code> (agregado raiz + máquina de estados), <code>Etapa</code>,
+                <code>Controle</code>, <code>RespostaEtapa</code>, <code>RegistroInteracao</code>.</p>
+            </div>
+            <div class="card">
+                <h3>Application</h3>
+                <p>Casos de uso: <code>IniciarOrquestracaoService</code>,
+                <code>ProcessarEtapaService</code>, <code>ConsultarOrquestracaoService</code>,
+                <code>AprovarEtapaService</code>.</p>
+            </div>
+            <div class="card">
+                <h3>Adapters IN</h3>
+                <p><code>CapGiroController</code> (REST) e <code>EtapaServiceBusListener</code>
+                (mensageria).</p>
+            </div>
+            <div class="card">
+                <h3>Adapters OUT</h3>
+                <p>Mongo (<code>OrquestracaoRepository</code>), Service Bus
+                (<code>MensagemPublisher</code>), processors de etapa e policy de interação.</p>
+            </div>
+        </div>
+        <div class="note tip">
+            <strong>Fonte da verdade é o MongoDB.</strong> O Service Bus transporta apenas um
+            contrato leve — <code>{ orquestracaoId, etapa, correlationId }</code> — nunca o
+            documento completo.
+        </div>
+
+        <!-- ---------- Etapas ---------- -->
+        <h2 id="etapas">As 4 etapas do cap-giro</h2>
+        <p>A ordem das etapas é fixa e definida em <code>EtapasCapGiro</code>:</p>
+        <table>
+            <thead>
+                <tr><th>Ordem</th><th>Etapa</th><th>Nome canônico</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>0</td><td>Oferta</td><td><code>baas:etapa:cap-giro:oferta</code></td></tr>
+                <tr><td>1</td><td>Elegibilidade</td><td><code>baas:etapa:cap-giro:elegibilidade</code></td></tr>
+                <tr><td>2</td><td>Simulação</td><td><code>baas:etapa:cap-giro:simulacao</code></td></tr>
+                <tr><td>3</td><td>Formalização</td><td><code>baas:etapa:cap-giro:formalizacao</code></td></tr>
+            </tbody>
+        </table>
+        <p>
+            Ao criar a orquestração, só a primeira etapa nasce <code>PENDENTE</code>; as demais
+            nascem <code>AGUARDANDO</code>. Cada etapa recebe um <code>Controle(0, 3)</code>
+            — zero tentativas realizadas e limite padrão de 3 retentativas.
+        </p>
+
+        <!-- ---------- Estados ---------- -->
+        <h2 id="estados">Máquina de estados</h2>
+        <h3>Status da etapa (<code>StatusEtapa</code>)</h3>
+        <table>
+            <thead><tr><th>Status</th><th>Significado</th></tr></thead>
+            <tbody>
+                <tr><td><span class="pill">AGUARDANDO</span></td><td>Ainda não é a vez desta etapa.</td></tr>
+                <tr><td><span class="pill info">PENDENTE</span></td><td>Pronta para ser processada.</td></tr>
+                <tr><td><span class="pill warn">EM_EXECUCAO</span></td><td>Transição atômica venceu; está executando.</td></tr>
+                <tr><td><span class="pill warn">PENDENTE_DE_INTERACAO</span></td><td>Suspensa aguardando aprovação humana.</td></tr>
+                <tr><td><span class="pill ok">CONCLUIDA</span></td><td>Executada com sucesso; resultado gravado.</td></tr>
+                <tr><td><span class="pill err">ERRO</span></td><td>Falhou após esgotar as tentativas.</td></tr>
+            </tbody>
+        </table>
+        <h3>Status da orquestração (<code>StatusOrquestracao</code>)</h3>
+        <p>
+            <span class="pill info">PENDENTE</span>
+            <span class="pill warn">EM_EXECUCAO</span>
+            <span class="pill ok">CONCLUIDA</span>
+            <span class="pill err">ERRO</span>
+        </p>
+
+        <!-- ---------- Fluxo passo a passo ---------- -->
+        <h2 id="fluxo">Fluxo passo a passo</h2>
+        <div class="flow">
+            <div class="step">
+                <div class="num">1</div>
+                <div class="body">
+                    <h4>POST /cap-giro</h4>
+                    <p><code>CapGiroController</code> recebe a requisição e chama
+                    <code>IniciarOrquestracaoService.iniciar</code>.</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">2</div>
+                <div class="body">
+                    <h4>Montar agregado</h4>
+                    <p>Cria a <code>Orquestracao</code> com as 4 etapas na ordem fixa. Resolve o
+                    <code>correlationId</code> (do comando ou UUID gerado).</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">3</div>
+                <div class="body">
+                    <h4>Persistir antes de publicar</h4>
+                    <p><code>repository.salvar()</code> grava no MongoDB. Isso garante que nenhuma
+                    mensagem apontará para uma orquestração inexistente.</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">4</div>
+                <div class="body">
+                    <h4>Publicar 1ª etapa</h4>
+                    <p>Publica <code>MensagemEtapa(id, OFERTA, correlationId)</code> na fila do
+                    Service Bus e responde <code>202 Accepted</code> com o id.</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">5</div>
+                <div class="body">
+                    <h4>Consumir mensagem</h4>
+                    <p><code>EtapaServiceBusListener.onMessage</code> desserializa a mensagem e chama
+                    <code>ProcessarEtapaService.processar</code>.</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">6</div>
+                <div class="body">
+                    <h4>Processar etapa</h4>
+                    <p>Recupera o estado, valida idempotência, faz a transição atômica
+                    <code>PENDENTE → EM_EXECUCAO</code> e executa o processor da etapa.</p>
+                </div>
+            </div>
+            <div class="arrow">▼</div>
+            <div class="step">
+                <div class="num">7</div>
+                <div class="body">
+                    <h4>Concluir e avançar</h4>
+                    <p>Grava <code>callback.response</code>, marca a etapa <code>CONCLUIDA</code> e
+                    publica a próxima etapa. Se for a última, marca a orquestração
+                    <code>CONCLUIDA</code>.</p>
+                </div>
+            </div>
+        </div>
+
+        <p>O resultado do processamento é traduzido pelo listener em ações do Service Bus:</p>
+        <table>
+            <thead><tr><th>ResultadoProcessamento</th><th>Ação no Service Bus</th></tr></thead>
+            <tbody>
+                <tr><td><code>SUCESSO</code>, <code>DUPLICIDADE</code>, <code>PROCESSOR_NAO_ENCONTRADO</code></td><td><code>context.complete()</code></td></tr>
+                <tr><td><code>ERRO_FINAL</code></td><td><code>context.deadLetter()</code></td></tr>
+                <tr><td><code>RETENTAR</code></td><td><code>context.abandon()</code> (reentrega)</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ---------- Idempotência ---------- -->
+        <h2 id="idempotencia">Idempotência, concorrência e retry</h2>
+        <p>
+            Como o Service Bus pode reentregar mensagens e o consumo pode rodar em múltiplas
+            réplicas, o processamento é protegido em duas camadas:
+        </p>
+        <ul>
+            <li>
+                <strong>Guarda por estado</strong> no <code>ProcessarEtapaService</code>: etapas em
+                <code>CONCLUIDA</code>, <code>EM_EXECUCAO</code>, <code>PENDENTE_DE_INTERACAO</code>
+                ou qualquer estado diferente de <code>PENDENTE</code> são tratadas como duplicidade.
+            </li>
+            <li>
+                <strong>Transição atômica condicional</strong> no Mongo
+                (<code>updateFirst</code> com <code>elemMatch</code>): só um consumidor vence a
+                corrida <code>PENDENTE → EM_EXECUCAO</code> (<code>modifiedCount == 1</code>),
+                incrementando <code>tentativas_realizadas</code> e <code>version</code>.
+            </li>
+        </ul>
+        <div class="note warn">
+            <strong>Retry.</strong> Falhas transitórias devolvem a etapa a <code>PENDENTE</code> e
+            retornam <code>RETENTAR</code> (o Service Bus reentrega). Quando
+            <code>tentativas_realizadas</code> atinge o limite (3), a etapa vira <code>ERRO</code>,
+            retorna <code>ERRO_FINAL</code> e a mensagem vai para a dead-letter queue.
+        </div>
+
+        <!-- ---------- Interação humana ---------- -->
+        <h2 id="interacao">Interação humana (aprovação)</h2>
+        <p>
+            Uma <code>InteracaoHumanaPolicy</code> pode marcar etapas que exigem aprovação. Quando
+            uma etapa assim é executada, ela é suspensa em <code>PENDENTE_DE_INTERACAO</code>:
+            a orquestração continua <code>EM_EXECUCAO</code>, mas não avança nem publica a próxima
+            etapa. A aprovação (<code>AprovarEtapaService</code>) registra quem aprovou, volta a
+            etapa para <code>PENDENTE</code> e republica a mensagem para retomar o fluxo.
+        </p>
+        <div class="note">
+            <strong>Estado atual da POC.</strong> A funcionalidade de aprovação está completa no
+            domínio e na aplicação, mas ainda não há endpoint REST que a exponha. Por padrão,
+            nenhuma etapa exige interação, então o fluxo roda 100% automático.
+        </div>
+
+        <footer class="docfooter">
+            <span>orch-poc · Documentação v1.0.0</span>
+            <span>Pacote <code>com.bradesco.orch</code></span>
+        </footer>
+    </main>
+</div>
+</body>
+</html>

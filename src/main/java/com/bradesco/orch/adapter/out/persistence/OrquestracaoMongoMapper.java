@@ -3,6 +3,7 @@ package com.bradesco.orch.adapter.out.persistence;
 import com.bradesco.orch.domain.entity.Controle;
 import com.bradesco.orch.domain.entity.Etapa;
 import com.bradesco.orch.domain.entity.Orquestracao;
+import com.bradesco.orch.domain.entity.RegistroInteracao;
 import com.bradesco.orch.domain.entity.RespostaEtapa;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.entity.StatusOrquestracao;
@@ -62,6 +63,10 @@ public class OrquestracaoMongoMapper {
             }
             Object response = (e.getCallback() != null) ? e.getCallback().getResponse() : null;
             ed.setCallback(new RespostaEtapaDocument(response));
+            if (e.getInteracao() != null) {
+                RegistroInteracao ri = e.getInteracao();
+                ed.setInteracao(new RegistroInteracaoDocument(ri.getAprovadoPor(), ri.getAprovadoEm(), ri.getObservacao()));
+            }
             resultado.add(ed);
         }
         return resultado;
@@ -77,12 +82,18 @@ public class OrquestracaoMongoMapper {
                     ? new Controle(ed.getControle().getTentativasRealizadas(), ed.getControle().getLimiteRetentativas())
                     : new Controle();
             Object response = (ed.getCallback() != null) ? ed.getCallback().getResponse() : null;
+            RegistroInteracao interacao = null;
+            if (ed.getInteracao() != null) {
+                RegistroInteracaoDocument rid = ed.getInteracao();
+                interacao = new RegistroInteracao(rid.getAprovadoPor(), rid.getAprovadoEm(), rid.getObservacao());
+            }
             resultado.add(new Etapa(
                     ed.getName(),
                     ed.getOrder(),
                     ed.getStatus() != null ? StatusEtapa.valueOf(ed.getStatus()) : null,
                     controle,
-                    new RespostaEtapa(response)
+                    new RespostaEtapa(response),
+                    interacao
             ));
         }
         return resultado;

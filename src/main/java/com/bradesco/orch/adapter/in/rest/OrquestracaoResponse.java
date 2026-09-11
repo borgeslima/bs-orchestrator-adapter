@@ -50,27 +50,48 @@ public record OrquestracaoResponse(
             String name,
             @Schema(description = "Ordem/sequencia da etapa", example = "1")
             int order,
-            @Schema(description = "Status atual da etapa", example = "CONCLUIDA")
+            @Schema(description = "Status atual da etapa (inclui PENDENTE_DE_INTERACAO)", example = "CONCLUIDA")
             String status,
             @Schema(description = "Quantidade de tentativas ja realizadas", example = "1")
             int tentativasRealizadas,
             @Schema(description = "Limite de retentativas configurado", example = "3")
             int limiteRetentativas,
             @Schema(description = "Resposta retornada pelo callback da etapa (payload livre)")
-            Object callbackResponse
+            Object callbackResponse,
+            @Schema(description = "Registro da aprovacao humana, presente apenas apos retomada por interacao")
+            InteracaoResponseView interacao
     ) {
         public static EtapaResponseView de(Etapa e) {
             int tentativas = e.getControle() != null ? e.getControle().getTentativasRealizadas() : 0;
             int limite = e.getControle() != null ? e.getControle().getLimiteRetentativas() : 0;
             Object response = e.getCallback() != null ? e.getCallback().getResponse() : null;
+            InteracaoResponseView interacao = e.getInteracao() != null
+                    ? new InteracaoResponseView(
+                            e.getInteracao().getAprovadoPor(),
+                            e.getInteracao().getAprovadoEm(),
+                            e.getInteracao().getObservacao())
+                    : null;
             return new EtapaResponseView(
                     e.getName(),
                     e.getOrder(),
                     e.getStatus() != null ? e.getStatus().name() : null,
                     tentativas,
                     limite,
-                    response
+                    response,
+                    interacao
             );
         }
+    }
+
+    /** View do registro de aprovação humana de uma etapa. */
+    @Schema(description = "Registro da aprovacao humana que retomou a etapa")
+    public record InteracaoResponseView(
+            @Schema(description = "Identificador de quem aprovou", example = "analista.credito")
+            String aprovadoPor,
+            @Schema(description = "Momento em que a aprovacao foi registrada")
+            Instant aprovadoEm,
+            @Schema(description = "Observacao livre da aprovacao")
+            String observacao
+    ) {
     }
 }

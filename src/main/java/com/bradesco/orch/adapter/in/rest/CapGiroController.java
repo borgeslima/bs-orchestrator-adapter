@@ -1,10 +1,13 @@
 package com.bradesco.orch.adapter.in.rest;
 
+import com.bradesco.orch.domain.port.in.AprovarEtapaUseCase;
 import com.bradesco.orch.domain.port.in.ConsultarOrquestracaoUseCase;
 import com.bradesco.orch.domain.port.in.IniciarOrquestracaoUseCase;
+import com.bradesco.orch.domain.port.in.ResultadoAprovacao;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,11 +28,14 @@ public class CapGiroController {
 
     private final IniciarOrquestracaoUseCase iniciarOrquestracao;
     private final ConsultarOrquestracaoUseCase consultarOrquestracao;
+    private final AprovarEtapaUseCase aprovarEtapa;
 
     public CapGiroController(IniciarOrquestracaoUseCase iniciarOrquestracao,
-                             ConsultarOrquestracaoUseCase consultarOrquestracao) {
+                             ConsultarOrquestracaoUseCase consultarOrquestracao,
+                             AprovarEtapaUseCase aprovarEtapa) {
         this.iniciarOrquestracao = iniciarOrquestracao;
         this.consultarOrquestracao = consultarOrquestracao;
+        this.aprovarEtapa = aprovarEtapa;
     }
 
     @Operation(summary = "Inicia uma orquestracao (assincrona)",
@@ -67,5 +73,34 @@ public class CapGiroController {
                 .map(OrquestracaoResponse::etapas)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Aprova (retoma) uma etapa suspensa em {@code PENDENTE_DE_INTERACAO}. A
+     * etapa é identificada pelo seu nome canônico (ex.:
+     * {@code baas:etapa:cap-giro:oferta}). Idempotente: uma segunda chamada para
+     * a mesma etapa já retomada/concluída retorna {@code 200} sem disparar nova
+     * execução.
+     */
+    @Operation(summary = "Aprova (retoma) uma etapa suspensa por interacao humana",
+            description = "Nao executa a etapa de forma sincrona: registra a aprovacao e republica a "
+                    + "mesma etapa na fila para retomada assincrona. Idempotente.")
+    @ApiResponse(responseCode = "202", description = "Aprovacao registrada; etapa republicada para retomada")
+    @ApiResponse(responseCode = "200", description = "Aprovacao ja processada anteriormente (idempotente)")
+    @ApiResponse(responseCode = "404", description = "Orquestracao ou etapa nao encontrada")
+    @PostMapping("/{orquestracaoId}/etapas/{etapa}/aprovar")
+    public ResponseEntity<AprovarEtapaResponse> aprovar(
+            @PathVariable String orquestracaoId,
+            @PathVariable String etapa,
+            @RequestBody(required = false) AprovarEtapaRequest request) {
+        AprovarEtapaRequest req = request != null ? request : new AprovarEtapaRequest(null, null, null);
+        ResultadoAprovacao resultado = aprovarEtapa.aprovar(req.toComando(orquestracaoId, etapa));
+
+        AprovarEtapaResponse body = new AprovarEtapaResponse(orquestracaoId, etapa, resultado.name());
+        return switch (resultado) {
+            case APROVADA -> ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
+            case JA_PROCESSADA -> ResponseEntity.ok(body);
+            case NAO_ENCONTRADA -> ResponseEntity.notFound().build();
+        };
     }
 }

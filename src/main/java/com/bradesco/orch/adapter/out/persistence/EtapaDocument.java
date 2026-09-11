@@ -15,6 +15,7 @@ public class EtapaDocument {
     private String status;
     private ControleDocument controle;
     private RespostaEtapaDocument callback;
+    private RegistroInteracaoDocument interacao;
 
     public EtapaDocument() {
     }

@@ -8,6 +8,7 @@ import com.bradesco.orch.domain.port.in.ProcessarEtapaUseCase;
 import com.bradesco.orch.domain.port.in.ResultadoProcessamento;
 import com.bradesco.orch.domain.port.out.EtapaProcessor;
 import com.bradesco.orch.domain.port.out.EtapaProcessorRegistry;
+import com.bradesco.orch.domain.port.out.InteracaoHumanaPolicy;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
 import com.bradesco.orch.domain.port.out.MensagemPublisher;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
@@ -20,7 +21,8 @@ import java.util.Optional;
 /**
  * Motor de transição de etapas (aplicação). Orquestra as ports para: idempotência
  * por estado, transição atômica {@code PENDENTE -> EM_EXECUCAO}, execução do
- * processor, persistência do resultado, avanço/conclusão e política de retry.
+ * processor, persistência do resultado, avanço/conclusão, política de retry e
+ * suspensão por interação humana ({@code PENDENTE_DE_INTERACAO}).
  */
 @Service
 public class ProcessarEtapaService implements ProcessarEtapaUseCase {
@@ -30,13 +32,16 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
     private final OrquestracaoRepository repository;
     private final EtapaProcessorRegistry registry;
     private final MensagemPublisher publisher;
+    private final InteracaoHumanaPolicy interacaoHumanaPolicy;
 
     public ProcessarEtapaService(OrquestracaoRepository repository,
                                  EtapaProcessorRegistry registry,
-                                 MensagemPublisher publisher) {
+                                 MensagemPublisher publisher,
+                                 InteracaoHumanaPolicy interacaoHumanaPolicy) {
         this.repository = repository;
         this.registry = registry;
         this.publisher = publisher;
+        this.interacaoHumanaPolicy = interacaoHumanaPolicy;
     }
 
     @Override
@@ -71,6 +76,12 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
             log.info("Etapa {} em estado {} -> tratada como duplicidade", comando.etapa(), statusAtual);
             return ResultadoProcessamento.DUPLICIDADE;
         }
+        if (statusAtual == StatusEtapa.PENDENTE_DE_INTERACAO) {
+            // Suspensa aguardando aprovacao humana: mensagem fora de ordem (ex.: retry
+            // antigo do Service Bus). Nao e erro; apenas nao reprocessa ainda.
+            log.info("Etapa {} aguardando interacao humana -> ignorada (duplicidade)", comando.etapa());
+            return ResultadoProcessamento.DUPLICIDADE;
+        }
         if (statusAtual != StatusEtapa.PENDENTE) {
             // AGUARDANDO / ERRO: mensagem fora de ordem ou etapa ja falhada.
             log.info("Etapa {} em estado {} -> ignorada (duplicidade)", comando.etapa(), statusAtual);
@@ -100,6 +111,18 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
         try {
             Object input = processor.execute(null);
             processor.callback(input);
+
+            // Ja retomada por aprovacao humana nesta rodada: nao suspende de novo,
+            // segue direto para a conclusao/avanco normal.
+            boolean jaAprovada = etapa.getInteracao() != null;
+            if (!jaAprovada && interacaoHumanaPolicy.requerInteracao(comando.etapa(), input)) {
+                // Suspende no ponto: NAO conclui, NAO avanca, NAO publica proxima etapa.
+                orquestracao.suspenderPorInteracao(comando.etapa(), input);
+                repository.atualizar(orquestracao);
+                log.info("Etapa {} suspensa aguardando interacao humana (PENDENTE_DE_INTERACAO)",
+                        comando.etapa());
+                return ResultadoProcessamento.AGUARDANDO_INTERACAO;
+            }
 
             // Sucesso: conclui a etapa (grava callback.response) e avanca/conclui
             Optional<Etapa> proxima = orquestracao.concluirEtapaEAvancar(comando.etapa(), input);

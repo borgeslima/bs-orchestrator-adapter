@@ -15,5 +15,10 @@ public enum ResultadoProcessamento {
     /** Falha definitiva (limite de tentativas atingido). */
     ERRO_FINAL,
     /** Nenhum processor registrado para o nome da etapa. */
-    PROCESSOR_NAO_ENCONTRADO
+    PROCESSOR_NAO_ENCONTRADO,
+    /**
+     * Etapa suspensa aguardando interação humana ({@code PENDENTE_DE_INTERACAO}).
+     * Não é erro nem finalização: a próxima etapa não é publicada até a aprovação.
+     */
+    AGUARDANDO_INTERACAO
 }
