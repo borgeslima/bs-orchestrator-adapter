@@ -1,0 +1,35 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [
+          {
+            "Name": "orchestration",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT1H",
+              "DuplicateDetectionHistoryTimeWindow": "PT20S",
+              "ForwardDeadLetteredMessagesTo": "",
+              "ForwardTo": "",
+              "LockDuration": "PT1M",
+              "MaxDeliveryCount": 10,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": false
+            }
+          }
+        ],
+        "Topics": []
+      }
+    ],
+    "SharedAccessKeys": [
+      {
+        "KeyName": "RootManageSharedAccessKey",
+        "SharedAccessKey": "6aa41ecb-e788-83e9-a48c-9d86b7fe47e6"
+      }
+    ],
+    "Logging": {
+      "Type": "Console"
+    }
+  }
+}
