@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>orch-poc · Sobre o projeto</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+        <div class="brand">
+            <h1><span class="dot"></span> orch-poc</h1>
+            <span class="ver">v1.0.0</span>
+        </div>
+        <nav>
+            <div class="group-title">Documentação</div>
+            <a href="index.html">Fluxo de Orquestração</a>
+            <a href="endpoints.html">Endpoints REST</a>
+            <a href="sobre.html" class="active">Sobre o projeto</a>
+
+            <div class="group-title">Nesta página</div>
+            <a href="#objetivo" class="sub">Objetivo</a>
+            <a href="#stack" class="sub">Stack tecnológica</a>
+            <a href="#estrutura" class="sub">Estrutura de pacotes</a>
+            <a href="#config" class="sub">Configuração</a>
+            <a href="#executar" class="sub">Como executar</a>
+            <a href="#versionamento" class="sub">Versionamento</a>
+        </nav>
+    </aside>
+
+    <!-- ================= CONTEÚDO ================= -->
+    <main class="content">
+        <h1>Sobre o projeto</h1>
+        <p class="lead">
+            <strong>orch-poc</strong> é uma prova de conceito de orquestração de processos de negócio
+            (cap-giro) construída com foco em arquitetura limpa, processamento assíncrono, idempotência
+            e resiliência.
+        </p>
+
+        <!-- ---------- Objetivo ---------- -->
+        <h2 id="objetivo">Objetivo</h2>
+        <p>
+            Demonstrar um motor de orquestração baseado em etapas que seja tolerante a falhas e
+            duplicidades. O estado vive no MongoDB (fonte da verdade) e o avanço entre etapas é
+            coordenado por mensageria (Azure Service Bus), permitindo escala horizontal do consumo.
+        </p>
+
+        <!-- ---------- Stack ---------- -->
+        <h2 id="stack">Stack tecnológica</h2>
+        <table>
+            <thead><tr><th>Camada</th><th>Tecnologia</th></tr></thead>
+            <tbody>
+                <tr><td>Linguagem</td><td>Java 21</td></tr>
+                <tr><td>Framework</td><td>Spring Boot 4.x</td></tr>
+                <tr><td>Web</td><td>Spring Web MVC</td></tr>
+                <tr><td>Persistência</td><td>Spring Data MongoDB</td></tr>
+                <tr><td>Mensageria</td><td>Azure Service Bus (Spring Cloud Azure)</td></tr>
+                <tr><td>HTTP externo</td><td><code>RestClient</code></td></tr>
+                <tr><td>Documentação de API</td><td>springdoc-openapi (Swagger UI)</td></tr>
+                <tr><td>Build</td><td>Maven (<code>mvnw</code>)</td></tr>
+                <tr><td>Deploy</td><td>Azure Container Apps</td></tr>
+            </tbody>
+        </table>
+
+        <!-- ---------- Estrutura ---------- -->
+        <h2 id="estrutura">Estrutura de pacotes</h2>
+        <p>Organização por Arquitetura Hexagonal sob <code>com.bradesco.orch</code>:</p>
+        <pre><code>com.bradesco.orch
+├── domain
+│   ├── entity        # Orquestracao, Etapa, Controle, RespostaEtapa, RegistroInteracao...
+│   └── port
+│       ├── in        # UseCases + comandos + resultados
+│       └── out       # OrquestracaoRepository, MensagemPublisher, EtapaProcessor...
+├── application       # Services (implementam os UseCases)
+├── adapter
+│   ├── in
+│   │   ├── rest       # CapGiroController + DTOs
+│   │   └── messaging  # EtapaServiceBusListener
+│   └── out
+│       ├── persistence  # Mongo repository, documents, mapper
+│       ├── messaging    # ServiceBusMensagemPublisher
+│       ├── processor    # Processors de etapa + registry + client mock
+│       └── policy       # Policy de interação humana
+└── config            # Mongo, ServiceBus, RestClient, OpenApi, Jackson</code></pre>
+
+        <!-- ---------- Config ---------- -->
+        <h2 id="config">Configuração</h2>
+        <p>Principais variáveis de ambiente (com defaults em <code>application.properties</code>):</p>
+        <table>
+            <thead><tr><th>Variável</th><th>Descrição</th></tr></thead>
+            <tbody>
+                <tr><td><code>SERVER_PORT</code></td><td>Porta HTTP (padrão 8081).</td></tr>
+                <tr><td><code>MONGODB_URI</code></td><td>Conexão MongoDB (fonte da verdade).</td></tr>
+                <tr><td><code>SERVICEBUS_CONNECTION_STRING</code></td><td>Conexão do Azure Service Bus.</td></tr>
+                <tr><td><code>SERVICEBUS_FILA</code></td><td>Nome da fila (padrão <code>orchestration</code>).</td></tr>
+                <tr><td><code>ETAPAS_ENDPOINT</code></td><td>Base URL do mock das etapas.</td></tr>
+                <tr><td><code>SWAGGER_UI_PATH</code> / <code>API_DOCS_PATH</code></td><td>Paths do Swagger / OpenAPI.</td></tr>
+            </tbody>
+        </table>
+        <div class="note warn">
+            <strong>Segurança.</strong> O default de <code>MONGODB_URI</code> traz credenciais de
+            desenvolvimento embutidas. Elas devem ser rotacionadas após a POC e substituídas por
+            variável de ambiente em qualquer ambiente compartilhado.
+        </div>
+
+        <!-- ---------- Executar ---------- -->
+        <h2 id="executar">Como executar</h2>
+        <h3>Local (Maven)</h3>
+        <pre><code># Windows PowerShell
+.\mvnw.cmd spring-boot:run</code></pre>
+        <h3>Infra local (Docker)</h3>
+        <p>O diretório <code>docker/</code> traz um <code>docker-compose.yaml</code> para subir as
+        dependências locais (ex.: emulador de Service Bus).</p>
+        <pre><code>docker compose -f docker/docker-compose.yaml up -d</code></pre>
+
+        <!-- ---------- Versionamento ---------- -->
+        <h2 id="versionamento">Versionamento</h2>
+        <p>
+            Esta documentação segue <a href="https://semver.org/lang/pt-BR/" target="_blank" rel="noopener">Versionamento Semântico</a>
+            (<code>MAJOR.MINOR.PATCH</code>) e acompanha a evolução da API.
+        </p>
+        <table>
+            <thead><tr><th>Versão</th><th>Data</th><th>Mudanças</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="pill info">v1.0.0</span></td>
+                    <td>2026-09-11</td>
+                    <td>Versão inicial. Fluxo de orquestração cap-giro, 3 endpoints REST
+                    (<code>POST /cap-giro</code>, <code>GET /cap-giro/{id}</code>,
+                    <code>GET /cap-giro/{id}/etapas</code>) e documentação do processamento assíncrono.</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="note tip">
+            <strong>Convenção.</strong> Incremente <code>MAJOR</code> em mudanças incompatíveis de
+            contrato, <code>MINOR</code> em novas funcionalidades retrocompatíveis (ex.: endpoint de
+            aprovação humana) e <code>PATCH</code> em correções e ajustes de documentação.
+        </div>
+
+        <footer class="docfooter">
+            <span>orch-poc · Documentação v1.0.0</span>
+            <span>Pacote <code>com.bradesco.orch</code></span>
+        </footer>
+    </main>
+</div>
+</body>
+</html>

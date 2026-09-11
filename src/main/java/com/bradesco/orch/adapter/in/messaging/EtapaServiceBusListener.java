@@ -72,7 +72,7 @@ public class EtapaServiceBusListener {
             ResultadoProcessamento resultado = processarEtapa.processar(comando);
 
             switch (resultado) {
-                case SUCESSO, DUPLICIDADE, PROCESSOR_NAO_ENCONTRADO -> context.complete();
+                case SUCESSO, DUPLICIDADE, PROCESSOR_NAO_ENCONTRADO, AGUARDANDO_INTERACAO -> context.complete();
                 case ERRO_FINAL -> context.deadLetter();
                 case RETENTAR -> context.abandon();
             }

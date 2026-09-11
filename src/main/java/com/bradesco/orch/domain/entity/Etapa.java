@@ -17,6 +17,9 @@ public class Etapa {
     private Controle controle;
     private RespostaEtapa callback;
 
+    /** Preenchido quando a etapa é retomada por interação humana. Ausente até então. */
+    private RegistroInteracao interacao;
+
     public Etapa() {
     }
 
@@ -28,6 +31,16 @@ public class Etapa {
         this.callback = callback;
     }
 
+    public Etapa(String name, int order, StatusEtapa status, Controle controle, RespostaEtapa callback,
+                RegistroInteracao interacao) {
+        this.name = name;
+        this.order = order;
+        this.status = status;
+        this.controle = controle;
+        this.callback = callback;
+        this.interacao = interacao;
+    }
+
     /** {@code true} quando a etapa está apta a ser executada ({@code PENDENTE}). */
     public boolean podeExecutar() {
         return status == StatusEtapa.PENDENTE;
@@ -36,5 +49,10 @@ public class Etapa {
     /** {@code true} quando o controle de tentativas atingiu o limite configurado. */
     public boolean atingiuLimite() {
         return controle != null && controle.atingiuLimite();
+    }
+
+    /** {@code true} quando a etapa está suspensa aguardando interação humana. */
+    public boolean aguardaInteracao() {
+        return status == StatusEtapa.PENDENTE_DE_INTERACAO;
     }
 }
