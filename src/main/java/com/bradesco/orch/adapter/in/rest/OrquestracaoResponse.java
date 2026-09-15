@@ -68,7 +68,8 @@ public record OrquestracaoResponse(
             InteracaoResponseView interacao = e.getInteracao() != null
                     ? new InteracaoResponseView(
                             e.getInteracao().getTipo() != null ? e.getInteracao().getTipo().name() : null,
-                            e.getInteracao().getAprovadoEm())
+                            e.getInteracao().getAprovadoEm(),
+                            e.getInteracao().getDados())
                     : null;
             return new EtapaResponseView(
                     e.getName(),
@@ -88,7 +89,9 @@ public record OrquestracaoResponse(
             @Schema(description = "Origem da interacao", example = "HUMANA")
             String tipo,
             @Schema(description = "Momento em que a interacao foi registrada")
-            Instant aprovadoEm
+            Instant aprovadoEm,
+            @Schema(description = "Dados de negocio fornecidos na retomada (ex.: idSimulacao)")
+            java.util.Map<String, Object> dados
     ) {
     }
 }

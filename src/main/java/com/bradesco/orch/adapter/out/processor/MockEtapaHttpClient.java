@@ -2,8 +2,10 @@ package com.bradesco.orch.adapter.out.processor;
 
 import com.bradesco.orch.domain.entity.ApiStep;
 import com.bradesco.orch.domain.entity.Callback;
+import com.bradesco.orch.domain.port.out.FalhaDefinitivaEtapaException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -12,7 +14,9 @@ import org.springframework.web.client.RestClient;
  * o formato de request/response do mock ({@code { "id": "<uuid>" }}).
  *
  * <p>Reutiliza internamente as abstrações {@link ApiStep} + {@link Callback} para
- * modelar a mecânica de sucesso/erro da chamada.</p>
+ * modelar a mecânica de sucesso/erro da chamada. Um {@code 400 Bad Request} é
+ * traduzido em {@link EtapaBadRequestException} carregando o corpo do erro, para
+ * que o motor o persista no callback da etapa sem retentar.</p>
  */
 @Component
 public class MockEtapaHttpClient {
@@ -31,6 +35,14 @@ public class MockEtapaHttpClient {
                         .body(EtapaResponse.class);
                 callback.onSuccess(resposta);
                 return resposta;
+            } catch (HttpClientErrorException.BadRequest badRequest) {
+                // 400 e erro determinístico: nao retentar. Extrai o corpo do erro
+                // (JSON como Map, ou texto puro) para persistir no callback da etapa.
+                Object corpo = extrairCorpo(badRequest);
+                FalhaDefinitivaEtapaException erro = new FalhaDefinitivaEtapaException(
+                        "API externa respondeu 400 Bad Request", corpo);
+                callback.onError(erro);
+                throw erro;
             } catch (RuntimeException e) {
                 callback.onError(e);
                 throw e;
@@ -51,8 +63,25 @@ public class MockEtapaHttpClient {
 
             @Override
             public void onError(Exception error) {
-                // no-op: erro propagado pela excecao do RestClient
+                // no-op: erro propagado pela excecao
             }
         });
+    }
+
+    /**
+     * Extrai o corpo do erro 400. Tenta desserializar como JSON (mapeado para
+     * {@code Map}); em último caso, devolve o texto bruto da resposta.
+     */
+    private Object extrairCorpo(HttpClientErrorException badRequest) {
+        try {
+            Object json = badRequest.getResponseBodyAs(java.util.Map.class);
+            if (json != null) {
+                return json;
+            }
+        } catch (RuntimeException ignorado) {
+            // corpo nao e JSON; cai para o texto bruto
+        }
+        String texto = badRequest.getResponseBodyAsString();
+        return (texto != null && !texto.isBlank()) ? texto : "400 Bad Request";
     }
 }

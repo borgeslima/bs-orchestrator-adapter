@@ -109,7 +109,7 @@ public class CapGiroController {
             @PathVariable String orquestracaoId,
             @PathVariable String etapa,
             @RequestBody(required = false) AprovarEtapaRequest request) {
-        AprovarEtapaRequest req = request != null ? request : new AprovarEtapaRequest(null, null);
+        AprovarEtapaRequest req = request != null ? request : new AprovarEtapaRequest(null, null, null);
         ResultadoAprovacao resultado = aprovarEtapa.aprovar(req.toComando(orquestracaoId, etapa));
 
         AprovarEtapaResponse body = new AprovarEtapaResponse(orquestracaoId, etapa, resultado.name());

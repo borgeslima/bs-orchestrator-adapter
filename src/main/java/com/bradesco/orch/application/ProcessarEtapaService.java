@@ -11,6 +11,7 @@ import com.bradesco.orch.domain.port.in.ProcessarEtapaUseCase;
 import com.bradesco.orch.domain.port.in.ResultadoProcessamento;
 import com.bradesco.orch.domain.port.out.CreditoRepository;
 import com.bradesco.orch.domain.port.out.EtapaProcessor;
+import com.bradesco.orch.domain.port.out.FalhaDefinitivaEtapaException;
 import com.bradesco.orch.domain.port.out.EtapaProcessorRegistry;
 import com.bradesco.orch.domain.port.out.InteracaoPolicy;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
@@ -117,12 +118,14 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
                                                      EtapaProcessor processor,
                                                      ProcessarEtapaComando comando) {
         try {
-            Object input = processor.execute(null);
-            processor.callback(input);
-
-            // Ja retomada por aprovacao humana nesta rodada: nao suspende de novo,
-            // segue direto para a conclusao/avanco normal.
+            // Quando a etapa foi retomada por interacao, os dados de negocio
+            // fornecidos na aprovacao (ex.: idSimulacao) sao repassados como input
+            // do processor. Sem interacao, mantem o comportamento atual (null).
             boolean jaAprovada = etapa.getInteracao() != null;
+            Object dadosInteracao = jaAprovada ? etapa.getInteracao().getDados() : null;
+
+            Object input = processor.execute(dadosInteracao);
+            processor.callback(input);
             if (!jaAprovada && interacaoPolicy.requerInteracao(comando.etapa(), input)) {
                 // Suspende no ponto: NAO conclui, NAO avanca, NAO publica proxima etapa.
                 orquestracao.suspenderPorInteracao(comando.etapa(), input);
@@ -143,6 +146,16 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
                     new MensagemEtapa(orquestracao.getId(), prox.getName(), comando.correlationId())));
 
             return ResultadoProcessamento.SUCESSO;
+        } catch (FalhaDefinitivaEtapaException falha) {
+            // Falha definitiva (ex.: 400 da API externa): NAO retenta. Grava o
+            // corpo do erro no callback da etapa e finaliza como ERRO.
+            log.warn("Falha definitiva na etapa {} -> ERRO_FINAL (corpo do erro salvo no callback)",
+                    comando.etapa());
+            orquestracao.marcarErro(comando.etapa(), falha.getCorpoErro());
+            repository.atualizar(orquestracao);
+            registrarHistorico(orquestracao.getId(), SituacaoCredito.ERRO,
+                    "Falha na etapa " + comando.etapa());
+            return ResultadoProcessamento.ERRO_FINAL;
         } catch (RuntimeException erro) {
             return tratarFalha(orquestracao, etapa, comando, erro);
         }

@@ -83,7 +83,8 @@ public class MongoOrquestracaoRepository implements OrquestracaoRepository {
                 .set("etapas.$.status", StatusEtapa.PENDENTE.name())
                 .set("etapas.$.interacao", new RegistroInteracaoDocument(
                         tipo,
-                        registroInteracao.getAprovadoEm()))
+                        registroInteracao.getAprovadoEm(),
+                        registroInteracao.getDados()))
                 .inc("version", 1)
                 .currentDate("dataAtualizacao");
 

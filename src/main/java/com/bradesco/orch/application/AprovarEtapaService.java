@@ -67,7 +67,7 @@ public class AprovarEtapaService implements AprovarEtapaUseCase {
         }
 
         TipoInteracao tipo = comando.tipo() != null ? comando.tipo() : TipoInteracao.HUMANA;
-        RegistroInteracao registro = new RegistroInteracao(tipo, Instant.now());
+        RegistroInteracao registro = new RegistroInteracao(tipo, Instant.now(), comando.dados());
 
         // Transicao atomica condicional PENDENTE_DE_INTERACAO -> PENDENTE. So UMA
         // chamada concorrente vence; as demais tratam como ja processada.

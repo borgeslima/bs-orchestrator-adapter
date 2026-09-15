@@ -114,6 +114,24 @@ public class Orquestracao {
     }
 
     /**
+     * Marca a etapa e a orquestração como {@code ERRO} e grava o
+     * {@code callback.response} com o corpo do erro (ex.: payload de um 400 da API
+     * externa), para auditoria e consulta.
+     */
+    public void marcarErro(String nome, Object corpoErro) {
+        Etapa atual = exigirEtapa(nome);
+        atual.setStatus(StatusEtapa.ERRO);
+        if (corpoErro != null) {
+            if (atual.getCallback() == null) {
+                atual.setCallback(new RespostaEtapa(corpoErro));
+            } else {
+                atual.getCallback().setResponse(corpoErro);
+            }
+        }
+        this.status = StatusOrquestracao.ERRO;
+    }
+
+    /**
      * Suspende a etapa informada em {@link StatusEtapa#PENDENTE_DE_INTERACAO},
      * gravando o resultado parcial (se houver) em {@code callback.response}.
      *

@@ -218,9 +218,17 @@
         <h3>Request body <span class="pill">opcional</span></h3>
         <pre><code>{
   "tipo": "HUMANA",                 // opcional; HUMANA ou MAQUINA; assume HUMANA se ausente
+  "dados": {                        // opcional; dados de negocio da retomada
+    "idSimulacao": "1a7c9d20-55b3-4a11-9c6f-4d0e8b2f7a44"
+  },
   "correlationId": "a1b2c3d4-..."   // opcional; se ausente, gera um UUID
 }</code></pre>
-        <p>O corpo inteiro é opcional. Enviar a requisição sem body assume <code>tipo = HUMANA</code>.</p>
+        <p>
+            O corpo inteiro é opcional. Enviar a requisição sem body assume <code>tipo = HUMANA</code>.
+            Quando a etapa seguinte depende de uma escolha do cliente (ex.: a etapa de simulação, em
+            que o cliente informa qual simulação aceitar), esses dados vão em <code>dados</code> —
+            são persistidos na interação e repassados ao processor no reprocessamento.
+        </p>
 
         <h3>Respostas</h3>
         <table>
@@ -280,6 +288,7 @@
             <tbody>
                 <tr><td><code>tipo</code></td><td>string</td><td>Origem da interação: <code>HUMANA</code> ou <code>MAQUINA</code>.</td></tr>
                 <tr><td><code>aprovadoEm</code></td><td>Instant</td><td>Momento em que a interação foi registrada.</td></tr>
+                <tr><td><code>dados</code></td><td>object</td><td>Dados de negócio fornecidos na retomada (ex.: <code>idSimulacao</code>), quando houver.</td></tr>
             </tbody>
         </table>
 
@@ -288,6 +297,7 @@
             <thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead>
             <tbody>
                 <tr><td><code>tipo</code></td><td>string</td><td>Origem da interação: <code>HUMANA</code> ou <code>MAQUINA</code> (assume <code>HUMANA</code> se ausente).</td></tr>
+                <tr><td><code>dados</code></td><td>object</td><td>Dados de negócio da retomada (opcional). Ex.: <code>{ "idSimulacao": "&lt;uuid&gt;" }</code>. Persistidos na interação e repassados ao processor.</td></tr>
                 <tr><td><code>correlationId</code></td><td>string</td><td>Correlação opcional; gerado se ausente.</td></tr>
             </tbody>
         </table>

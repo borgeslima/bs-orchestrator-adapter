@@ -67,7 +67,7 @@ public class OrquestracaoMongoMapper {
             if (e.getInteracao() != null) {
                 RegistroInteracao ri = e.getInteracao();
                 String tipo = ri.getTipo() != null ? ri.getTipo().name().toLowerCase() : null;
-                ed.setInteracao(new RegistroInteracaoDocument(tipo, ri.getAprovadoEm()));
+                ed.setInteracao(new RegistroInteracaoDocument(tipo, ri.getAprovadoEm(), ri.getDados()));
             }
             resultado.add(ed);
         }
@@ -90,7 +90,7 @@ public class OrquestracaoMongoMapper {
                 TipoInteracao tipo = rid.getTipo() != null
                         ? TipoInteracao.valueOf(rid.getTipo().toUpperCase())
                         : null;
-                interacao = new RegistroInteracao(tipo, rid.getAprovadoEm());
+                interacao = new RegistroInteracao(tipo, rid.getAprovadoEm(), rid.getDados());
             }
             resultado.add(new Etapa(
                     ed.getName(),
