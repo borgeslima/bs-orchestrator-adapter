@@ -1,6 +1,7 @@
 package com.bradesco.orch.adapter.in.rest;
 
 import com.bradesco.orch.domain.port.in.AprovarEtapaUseCase;
+import com.bradesco.orch.domain.port.in.ConsultarCreditoUseCase;
 import com.bradesco.orch.domain.port.in.ConsultarOrquestracaoUseCase;
 import com.bradesco.orch.domain.port.in.IniciarOrquestracaoUseCase;
 import com.bradesco.orch.domain.port.in.ResultadoAprovacao;
@@ -28,13 +29,16 @@ public class CapGiroController {
 
     private final IniciarOrquestracaoUseCase iniciarOrquestracao;
     private final ConsultarOrquestracaoUseCase consultarOrquestracao;
+    private final ConsultarCreditoUseCase consultarCredito;
     private final AprovarEtapaUseCase aprovarEtapa;
 
     public CapGiroController(IniciarOrquestracaoUseCase iniciarOrquestracao,
                              ConsultarOrquestracaoUseCase consultarOrquestracao,
+                             ConsultarCreditoUseCase consultarCredito,
                              AprovarEtapaUseCase aprovarEtapa) {
         this.iniciarOrquestracao = iniciarOrquestracao;
         this.consultarOrquestracao = consultarOrquestracao;
+        this.consultarCredito = consultarCredito;
         this.aprovarEtapa = aprovarEtapa;
     }
 
@@ -75,6 +79,18 @@ public class CapGiroController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /** Retorna o crédito de negócio (id + histórico), ou 404 se não existir. */
+    @Operation(summary = "Consulta o credito de negocio e seu historico")
+    @ApiResponse(responseCode = "200", description = "Credito encontrado")
+    @ApiResponse(responseCode = "404", description = "Credito nao encontrado")
+    @GetMapping("/{orquestracaoId}/credito")
+    public ResponseEntity<CreditoResponse> consultarCredito(@PathVariable String orquestracaoId) {
+        return consultarCredito.buscarPorId(orquestracaoId)
+                .map(CreditoResponse::de)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     /**
      * Aprova (retoma) uma etapa suspensa em {@code PENDENTE_DE_INTERACAO}. A
      * etapa é identificada pelo seu nome canônico (ex.:
@@ -93,7 +109,7 @@ public class CapGiroController {
             @PathVariable String orquestracaoId,
             @PathVariable String etapa,
             @RequestBody(required = false) AprovarEtapaRequest request) {
-        AprovarEtapaRequest req = request != null ? request : new AprovarEtapaRequest(null, null, null);
+        AprovarEtapaRequest req = request != null ? request : new AprovarEtapaRequest(null, null);
         ResultadoAprovacao resultado = aprovarEtapa.aprovar(req.toComando(orquestracaoId, etapa));
 
         AprovarEtapaResponse body = new AprovarEtapaResponse(orquestracaoId, etapa, resultado.name());

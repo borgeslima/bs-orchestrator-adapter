@@ -6,31 +6,29 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Registro da interação/aprovação humana que retomou uma etapa suspensa em
+ * Registro da interação que retomou uma etapa suspensa em
  * {@link StatusEtapa#PENDENTE_DE_INTERACAO}. Persistido junto à etapa para
- * auditoria e para suportar a idempotência do endpoint de aprovação.
+ * suportar a idempotência do endpoint de aprovação e sinalizar ao motor que a
+ * etapa já foi retomada (não deve suspender novamente).
  *
- * <p>Puro domínio, sem framework.</p>
+ * <p>Registra apenas a <b>origem</b> da interação ({@link #tipo}) e o
+ * <b>momento</b> em que ocorreu ({@link #aprovadoEm}). Puro domínio, sem framework.</p>
  */
 @Getter
 @Setter
 public class RegistroInteracao {
 
-    /** Identificador de quem aprovou (usuário/sistema), quando informado. */
-    private String aprovadoPor;
+    /** Origem da interação (humana ou máquina). */
+    private TipoInteracao tipo;
 
-    /** Momento em que a aprovação foi registrada. */
+    /** Momento em que a interação foi registrada. */
     private Instant aprovadoEm;
-
-    /** Observação livre registrada junto à aprovação (opcional). */
-    private String observacao;
 
     public RegistroInteracao() {
     }
 
-    public RegistroInteracao(String aprovadoPor, Instant aprovadoEm, String observacao) {
-        this.aprovadoPor = aprovadoPor;
+    public RegistroInteracao(TipoInteracao tipo, Instant aprovadoEm) {
+        this.tipo = tipo;
         this.aprovadoEm = aprovadoEm;
-        this.observacao = observacao;
     }
 }

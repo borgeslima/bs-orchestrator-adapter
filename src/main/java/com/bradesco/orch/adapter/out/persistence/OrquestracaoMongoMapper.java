@@ -7,6 +7,7 @@ import com.bradesco.orch.domain.entity.RegistroInteracao;
 import com.bradesco.orch.domain.entity.RespostaEtapa;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.entity.StatusOrquestracao;
+import com.bradesco.orch.domain.entity.TipoInteracao;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -65,7 +66,8 @@ public class OrquestracaoMongoMapper {
             ed.setCallback(new RespostaEtapaDocument(response));
             if (e.getInteracao() != null) {
                 RegistroInteracao ri = e.getInteracao();
-                ed.setInteracao(new RegistroInteracaoDocument(ri.getAprovadoPor(), ri.getAprovadoEm(), ri.getObservacao()));
+                String tipo = ri.getTipo() != null ? ri.getTipo().name().toLowerCase() : null;
+                ed.setInteracao(new RegistroInteracaoDocument(tipo, ri.getAprovadoEm()));
             }
             resultado.add(ed);
         }
@@ -85,7 +87,10 @@ public class OrquestracaoMongoMapper {
             RegistroInteracao interacao = null;
             if (ed.getInteracao() != null) {
                 RegistroInteracaoDocument rid = ed.getInteracao();
-                interacao = new RegistroInteracao(rid.getAprovadoPor(), rid.getAprovadoEm(), rid.getObservacao());
+                TipoInteracao tipo = rid.getTipo() != null
+                        ? TipoInteracao.valueOf(rid.getTipo().toUpperCase())
+                        : null;
+                interacao = new RegistroInteracao(tipo, rid.getAprovadoEm());
             }
             resultado.add(new Etapa(
                     ed.getName(),

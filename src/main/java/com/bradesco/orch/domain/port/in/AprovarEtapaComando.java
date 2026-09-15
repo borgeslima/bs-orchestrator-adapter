@@ -1,15 +1,16 @@
 package com.bradesco.orch.domain.port.in;
 
+import com.bradesco.orch.domain.entity.TipoInteracao;
+
 /**
  * Comando de entrada para aprovar (retomar) uma etapa suspensa em
  * {@code PENDENTE_DE_INTERACAO}.
  *
  * @param orquestracaoId id da orquestração
  * @param etapa          nome canônico da etapa a retomar
- * @param aprovadoPor    identificador de quem aprovou (opcional)
- * @param observacao     observação livre da aprovação (opcional)
+ * @param tipo           origem da interação (humana/máquina); assume {@code HUMANA} se ausente
  * @param correlationId  id de rastreamento ponta a ponta (opcional; gerado se ausente)
  */
-public record AprovarEtapaComando(String orquestracaoId, String etapa, String aprovadoPor,
-                                   String observacao, String correlationId) {
+public record AprovarEtapaComando(String orquestracaoId, String etapa, TipoInteracao tipo,
+                                   String correlationId) {
 }

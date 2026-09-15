@@ -13,7 +13,7 @@
     <aside class="sidebar">
         <div class="brand">
             <h1><span class="dot"></span> orch-poc</h1>
-            <span class="ver">v1.0.0</span>
+            <span class="ver">v1.1.0</span>
         </div>
         <nav>
             <div class="group-title">Documentação</div>
@@ -28,7 +28,7 @@
             <a href="#estados" class="sub">Máquina de estados</a>
             <a href="#fluxo" class="sub">Fluxo passo a passo</a>
             <a href="#idempotencia" class="sub">Idempotência e retry</a>
-            <a href="#interacao" class="sub">Interação humana</a>
+            <a href="#interacao" class="sub">Interação (aprovação)</a>
         </nav>
     </aside>
 
@@ -82,7 +82,7 @@
             <div class="card">
                 <h3>Adapters OUT</h3>
                 <p>Mongo (<code>OrquestracaoRepository</code>), Service Bus
-                (<code>MensagemPublisher</code>), processors de etapa e policy de interação.</p>
+                (<code>MensagemPublisher</code>), processors de etapa e <code>InteracaoPolicy</code>.</p>
             </div>
         </div>
         <div class="note tip">
@@ -120,7 +120,7 @@
                 <tr><td><span class="pill">AGUARDANDO</span></td><td>Ainda não é a vez desta etapa.</td></tr>
                 <tr><td><span class="pill info">PENDENTE</span></td><td>Pronta para ser processada.</td></tr>
                 <tr><td><span class="pill warn">EM_EXECUCAO</span></td><td>Transição atômica venceu; está executando.</td></tr>
-                <tr><td><span class="pill warn">PENDENTE_DE_INTERACAO</span></td><td>Suspensa aguardando aprovação humana.</td></tr>
+                <tr><td><span class="pill warn">PENDENTE_DE_INTERACAO</span></td><td>Suspensa aguardando uma interação (aprovação) humana ou de máquina.</td></tr>
                 <tr><td><span class="pill ok">CONCLUIDA</span></td><td>Executada com sucesso; resultado gravado.</td></tr>
                 <tr><td><span class="pill err">ERRO</span></td><td>Falhou após esgotar as tentativas.</td></tr>
             </tbody>
@@ -205,7 +205,7 @@
         <table>
             <thead><tr><th>ResultadoProcessamento</th><th>Ação no Service Bus</th></tr></thead>
             <tbody>
-                <tr><td><code>SUCESSO</code>, <code>DUPLICIDADE</code>, <code>PROCESSOR_NAO_ENCONTRADO</code></td><td><code>context.complete()</code></td></tr>
+                <tr><td><code>SUCESSO</code>, <code>DUPLICIDADE</code>, <code>PROCESSOR_NAO_ENCONTRADO</code>, <code>AGUARDANDO_INTERACAO</code></td><td><code>context.complete()</code></td></tr>
                 <tr><td><code>ERRO_FINAL</code></td><td><code>context.deadLetter()</code></td></tr>
                 <tr><td><code>RETENTAR</code></td><td><code>context.abandon()</code> (reentrega)</td></tr>
             </tbody>
@@ -237,23 +237,42 @@
             retorna <code>ERRO_FINAL</code> e a mensagem vai para a dead-letter queue.
         </div>
 
-        <!-- ---------- Interação humana ---------- -->
-        <h2 id="interacao">Interação humana (aprovação)</h2>
+        <!-- ---------- Interação (aprovação) ---------- -->
+        <h2 id="interacao">Interação (aprovação)</h2>
         <p>
-            Uma <code>InteracaoHumanaPolicy</code> pode marcar etapas que exigem aprovação. Quando
-            uma etapa assim é executada, ela é suspensa em <code>PENDENTE_DE_INTERACAO</code>:
-            a orquestração continua <code>EM_EXECUCAO</code>, mas não avança nem publica a próxima
-            etapa. A aprovação (<code>AprovarEtapaService</code>) registra quem aprovou, volta a
-            etapa para <code>PENDENTE</code> e republica a mensagem para retomar o fluxo.
+            Uma <code>InteracaoPolicy</code> decide quais etapas exigem uma interação para avançar.
+            Quando uma etapa assim executa com sucesso, ela é suspensa em
+            <code>PENDENTE_DE_INTERACAO</code>: a orquestração continua <code>EM_EXECUCAO</code>,
+            mas não avança nem publica a próxima etapa. A aprovação
+            (<code>AprovarEtapaService</code>) registra apenas a <strong>origem</strong> da
+            interação e o <strong>momento</strong>, volta a etapa para <code>PENDENTE</code> e
+            republica a mensagem para retomar o fluxo pela via assíncrona normal.
         </p>
-        <div class="note">
-            <strong>Estado atual da POC.</strong> A funcionalidade de aprovação está completa no
-            domínio e na aplicação, mas ainda não há endpoint REST que a exponha. Por padrão,
-            nenhuma etapa exige interação, então o fluxo roda 100% automático.
+        <p>
+            A interação é <strong>genérica</strong>: pode ter origem <code>HUMANA</code> (ex.: uma
+            aprovação manual via REST) ou de <code>MAQUINA</code> (uma automação/sistema externo).
+            O registro persistido em <code>etapas[].interacao</code> guarda somente:
+        </p>
+        <pre><code>"interacao": {
+  "tipo": "humana",              // ou "maquina"
+  "aprovadoEm": "2026-09-15T19:57:00.076Z"
+}</code></pre>
+        <p>
+            A aprovação é <strong>idempotente</strong>: uma etapa que já não esteja em
+            <code>PENDENTE_DE_INTERACAO</code> retorna sem disparar nova execução. E quando a etapa
+            aprovada é reprocessada, o motor detecta que ela já possui <code>interacao</code> e
+            <em>não</em> a suspende novamente — segue direto para concluir e avançar.
+        </p>
+        <div class="note tip">
+            <strong>Exposta via REST.</strong> A aprovação é acionada por
+            <code>POST /cap-giro/{orquestracaoId}/etapas/{etapa}/aprovar</code> (ver
+            <a href="endpoints.html#aprovar">endpoints</a>). Quais etapas exigem interação é
+            configurável em <code>orch.etapas.interacao-humana</code> (lista de nomes canônicos);
+            vazio = fluxo 100% automático.
         </div>
 
         <footer class="docfooter">
-            <span>orch-poc · Documentação v1.0.0</span>
+            <span>orch-poc · Documentação v1.1.0</span>
             <span>Pacote <code>com.bradesco.orch</code></span>
         </footer>
     </main>
