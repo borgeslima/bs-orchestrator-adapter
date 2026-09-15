@@ -17,4 +17,17 @@ public interface EtapaProcessor<I, O> {
 
     /** Normaliza/trata o resultado que será persistido como {@code callback.response}. */
     void callback(O response);
+
+    /**
+     * Indica se esta etapa depende do resultado ({@code callback.response}) da
+     * <b>etapa imediatamente anterior</b>. Quando {@code true}, o motor entrega
+     * esse callback como {@code input} de {@link #execute(Object)}; quando
+     * {@code false} (padrão), o input é {@code null}.
+     *
+     * <p>Mantém o encadeamento explícito e no controle de cada processor: só quem
+     * declara a dependência recebe o dado da etapa anterior.</p>
+     */
+    default boolean dependeDaEtapaAnterior() {
+        return false;
+    }
 }

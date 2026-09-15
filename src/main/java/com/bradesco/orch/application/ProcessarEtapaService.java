@@ -4,6 +4,7 @@ import com.bradesco.orch.domain.entity.Etapa;
 import com.bradesco.orch.domain.entity.HistoricoCredito;
 import com.bradesco.orch.domain.entity.HistoricoNegocioCapGiro;
 import com.bradesco.orch.domain.entity.Orquestracao;
+import com.bradesco.orch.domain.entity.RespostaEtapa;
 import com.bradesco.orch.domain.entity.SituacaoCredito;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.port.in.ProcessarEtapaComando;
@@ -14,6 +15,7 @@ import com.bradesco.orch.domain.port.out.EtapaProcessor;
 import com.bradesco.orch.domain.port.out.FalhaDefinitivaEtapaException;
 import com.bradesco.orch.domain.port.out.EtapaProcessorRegistry;
 import com.bradesco.orch.domain.port.out.InteracaoPolicy;
+import com.bradesco.orch.domain.port.out.ManipuladorEntradaRegistry;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
 import com.bradesco.orch.domain.port.out.MensagemPublisher;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
@@ -40,17 +42,20 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
     private final EtapaProcessorRegistry registry;
     private final MensagemPublisher publisher;
     private final InteracaoPolicy interacaoPolicy;
+    private final ManipuladorEntradaRegistry manipuladorRegistry;
 
     public ProcessarEtapaService(OrquestracaoRepository repository,
                                  CreditoRepository creditoRepository,
                                  EtapaProcessorRegistry registry,
                                  MensagemPublisher publisher,
-                                 InteracaoPolicy interacaoPolicy) {
+                                 InteracaoPolicy interacaoPolicy,
+                                 ManipuladorEntradaRegistry manipuladorRegistry) {
         this.repository = repository;
         this.creditoRepository = creditoRepository;
         this.registry = registry;
         this.publisher = publisher;
         this.interacaoPolicy = interacaoPolicy;
+        this.manipuladorRegistry = manipuladorRegistry;
     }
 
     @Override
@@ -118,17 +123,21 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
                                                      EtapaProcessor processor,
                                                      ProcessarEtapaComando comando) {
         try {
-            // Quando a etapa foi retomada por interacao, os dados de negocio
-            // fornecidos na aprovacao (ex.: idSimulacao) sao repassados como input
-            // do processor. Sem interacao, mantem o comportamento atual (null).
+            // Monta o input do processor com a seguinte precedencia:
+            // 1) dados da interacao, quando a etapa foi retomada por aprovacao;
+            // 2) callback.response da etapa anterior, quando o processor declara
+            //    que depende dela (dependeDaEtapaAnterior());
+            // 3) null (execucao normal, sem encadeamento).
             boolean jaAprovada = etapa.getInteracao() != null;
-            Object dadosInteracao = jaAprovada ? etapa.getInteracao().getDados() : null;
+            Object input = montarInput(orquestracao, etapa, processor, jaAprovada);
 
-            Object input = processor.execute(dadosInteracao);
-            processor.callback(input);
-            if (!jaAprovada && interacaoPolicy.requerInteracao(comando.etapa(), input)) {
+            // 'resultado' e o callback desta etapa: persistido e avaliado adiante.
+            Object resultado = processor.execute(input);
+            processor.callback(resultado);
+
+            if (!jaAprovada && interacaoPolicy.requerInteracao(comando.etapa(), resultado)) {
                 // Suspende no ponto: NAO conclui, NAO avanca, NAO publica proxima etapa.
-                orquestracao.suspenderPorInteracao(comando.etapa(), input);
+                orquestracao.suspenderPorInteracao(comando.etapa(), resultado);
                 repository.atualizar(orquestracao);
                 log.info("Etapa {} suspensa aguardando interacao humana (PENDENTE_DE_INTERACAO)",
                         comando.etapa());
@@ -136,7 +145,7 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
             }
 
             // Sucesso: conclui a etapa (grava callback.response) e avanca/conclui
-            Optional<Etapa> proxima = orquestracao.concluirEtapaEAvancar(comando.etapa(), input);
+            Optional<Etapa> proxima = orquestracao.concluirEtapaEAvancar(comando.etapa(), resultado);
             repository.atualizar(orquestracao);
 
             // Atualiza o historico de negocio (credito) refletindo a etapa concluida.
@@ -183,6 +192,42 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
         etapa.setStatus(StatusEtapa.PENDENTE);
         repository.atualizar(orquestracao);
         return ResultadoProcessamento.RETENTAR;
+    }
+
+    /**
+     * Resolve o input do processor conforme a precedencia: (1) dados da interacao
+     * se a etapa foi retomada por aprovacao; (2) callback.response da etapa
+     * anterior se o processor declara depender dela; (3) null.
+     */
+    private Object montarInput(Orquestracao orquestracao, Etapa etapa,
+                               EtapaProcessor<?, ?> processor, boolean jaAprovada) {
+        // 1. Resolve o payload bruto (origem do input).
+        Object bruto;
+        if (jaAprovada && etapa.getInteracao() != null) {
+            bruto = etapa.getInteracao().getDados();
+        } else if (processor.dependeDaEtapaAnterior()) {
+            bruto = orquestracao.etapaAnterior(etapa.getName())
+                    .map(Etapa::getCallback)
+                    .map(RespostaEtapa::getResponse)
+                    .orElse(null);
+        } else {
+            bruto = null;
+        }
+
+        // 2. Aplica o manipulador de campos da etapa, se declarado. O motor
+        //    permanece agnostico: so transforma quando ha um manipulador.
+        return manipuladorRegistry.localizar(etapa.getName())
+                .map(manipulador -> (Object) manipulador.manipular(comoMapa(bruto)))
+                .orElse(bruto);
+    }
+
+    /** Converte o payload bruto em mapa para o manipulador; {@code null}/nao-mapa vira mapa vazio. */
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, Object> comoMapa(Object bruto) {
+        if (bruto instanceof java.util.Map<?, ?> mapa) {
+            return (java.util.Map<String, Object>) mapa;
+        }
+        return java.util.Map.of();
     }
 
     /** Registra no historico do credito a conclusao (de negocio) da etapa informada. */
