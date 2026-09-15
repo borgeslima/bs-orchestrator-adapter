@@ -24,11 +24,6 @@ public class Controle {
         this.limiteRetentativas = limiteRetentativas;
     }
 
-    /** Incrementa o contador de tentativas realizadas. */
-    public void incrementar() {
-        this.tentativasRealizadas++;
-    }
-
     /** {@code true} quando o número de tentativas atinge (ou ultrapassa) o limite. */
     public boolean atingiuLimite() {
         return tentativasRealizadas >= limiteRetentativas;

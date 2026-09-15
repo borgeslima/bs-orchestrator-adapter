@@ -4,6 +4,7 @@ import com.bradesco.orch.domain.entity.Etapa;
 import com.bradesco.orch.domain.entity.Orquestracao;
 import com.bradesco.orch.domain.entity.RegistroInteracao;
 import com.bradesco.orch.domain.entity.StatusEtapa;
+import com.bradesco.orch.domain.entity.TipoInteracao;
 import com.bradesco.orch.domain.port.in.AprovarEtapaComando;
 import com.bradesco.orch.domain.port.in.AprovarEtapaUseCase;
 import com.bradesco.orch.domain.port.in.ResultadoAprovacao;
@@ -65,8 +66,8 @@ public class AprovarEtapaService implements AprovarEtapaUseCase {
             return ResultadoAprovacao.JA_PROCESSADA;
         }
 
-        RegistroInteracao registro = new RegistroInteracao(
-                comando.aprovadoPor(), Instant.now(), comando.observacao());
+        TipoInteracao tipo = comando.tipo() != null ? comando.tipo() : TipoInteracao.HUMANA;
+        RegistroInteracao registro = new RegistroInteracao(tipo, Instant.now(), comando.dados());
 
         // Transicao atomica condicional PENDENTE_DE_INTERACAO -> PENDENTE. So UMA
         // chamada concorrente vence; as demais tratam como ja processada.

@@ -67,9 +67,9 @@ public record OrquestracaoResponse(
             Object response = e.getCallback() != null ? e.getCallback().getResponse() : null;
             InteracaoResponseView interacao = e.getInteracao() != null
                     ? new InteracaoResponseView(
-                            e.getInteracao().getAprovadoPor(),
+                            e.getInteracao().getTipo() != null ? e.getInteracao().getTipo().name() : null,
                             e.getInteracao().getAprovadoEm(),
-                            e.getInteracao().getObservacao())
+                            e.getInteracao().getDados())
                     : null;
             return new EtapaResponseView(
                     e.getName(),
@@ -83,15 +83,15 @@ public record OrquestracaoResponse(
         }
     }
 
-    /** View do registro de aprovação humana de uma etapa. */
-    @Schema(description = "Registro da aprovacao humana que retomou a etapa")
+    /** View do registro de interação que retomou uma etapa. */
+    @Schema(description = "Registro da interacao que retomou a etapa")
     public record InteracaoResponseView(
-            @Schema(description = "Identificador de quem aprovou", example = "analista.credito")
-            String aprovadoPor,
-            @Schema(description = "Momento em que a aprovacao foi registrada")
+            @Schema(description = "Origem da interacao", example = "HUMANA")
+            String tipo,
+            @Schema(description = "Momento em que a interacao foi registrada")
             Instant aprovadoEm,
-            @Schema(description = "Observacao livre da aprovacao")
-            String observacao
+            @Schema(description = "Dados de negocio fornecidos na retomada (ex.: idSimulacao)")
+            java.util.Map<String, Object> dados
     ) {
     }
 }

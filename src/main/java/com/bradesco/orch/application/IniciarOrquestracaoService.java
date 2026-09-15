@@ -1,14 +1,17 @@
 package com.bradesco.orch.application;
 
 import com.bradesco.orch.domain.entity.Controle;
+import com.bradesco.orch.domain.entity.Credito;
 import com.bradesco.orch.domain.entity.Etapa;
 import com.bradesco.orch.domain.entity.EtapasCapGiro;
+import com.bradesco.orch.domain.entity.HistoricoNegocioCapGiro;
 import com.bradesco.orch.domain.entity.Orquestracao;
 import com.bradesco.orch.domain.entity.RespostaEtapa;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.entity.StatusOrquestracao;
 import com.bradesco.orch.domain.port.in.IniciarOrquestracaoComando;
 import com.bradesco.orch.domain.port.in.IniciarOrquestracaoUseCase;
+import com.bradesco.orch.domain.port.out.CreditoRepository;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
 import com.bradesco.orch.domain.port.out.MensagemPublisher;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
@@ -29,10 +32,14 @@ import java.util.UUID;
 public class IniciarOrquestracaoService implements IniciarOrquestracaoUseCase {
 
     private final OrquestracaoRepository repository;
+    private final CreditoRepository creditoRepository;
     private final MensagemPublisher publisher;
 
-    public IniciarOrquestracaoService(OrquestracaoRepository repository, MensagemPublisher publisher) {
+    public IniciarOrquestracaoService(OrquestracaoRepository repository,
+                                      CreditoRepository creditoRepository,
+                                      MensagemPublisher publisher) {
         this.repository = repository;
+        this.creditoRepository = creditoRepository;
         this.publisher = publisher;
     }
 
@@ -47,6 +54,11 @@ public class IniciarOrquestracaoService implements IniciarOrquestracaoUseCase {
         // Persiste ANTES de publicar (garante que nao havera mensagem apontando
         // para orquestracao inexistente). Em falha, a excecao propaga sem publicar.
         Orquestracao salva = repository.salvar(orquestracao);
+
+        // Grava o credito de negocio (mesmo id da orquestracao) com o historico
+        // inicial PENDENTE, antes de disparar o fluxo assincrono.
+        Credito credito = Credito.iniciar(salva.getId(), HistoricoNegocioCapGiro.DESCRICAO_INICIAL, Instant.now());
+        creditoRepository.salvar(credito);
 
         publisher.publicar(new MensagemEtapa(salva.getId(), EtapasCapGiro.OFERTA, correlationId));
 

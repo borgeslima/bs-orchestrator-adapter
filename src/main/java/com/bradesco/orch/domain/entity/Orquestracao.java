@@ -76,6 +76,20 @@ public class Orquestracao {
     }
 
     /**
+     * Retorna a etapa imediatamente anterior (por {@code order}) em relação à
+     * informada, ou vazio se a informada for a primeira ou inexistente.
+     */
+    public Optional<Etapa> etapaAnterior(String nomeAtual) {
+        Etapa atual = etapaAtual(nomeAtual);
+        if (atual == null || etapas == null) {
+            return Optional.empty();
+        }
+        return etapas.stream()
+                .filter(e -> e.getOrder() < atual.getOrder())
+                .max(Comparator.comparingInt(Etapa::getOrder));
+    }
+
+    /**
      * Conclui a etapa informada (grava {@code callback.response} e marca
      * {@code CONCLUIDA}) e avança o fluxo: se houver próxima etapa
      * {@code AGUARDANDO}, transiciona-a para {@code PENDENTE} e mantém a
@@ -110,6 +124,24 @@ public class Orquestracao {
     public void marcarErro(String nome) {
         Etapa atual = exigirEtapa(nome);
         atual.setStatus(StatusEtapa.ERRO);
+        this.status = StatusOrquestracao.ERRO;
+    }
+
+    /**
+     * Marca a etapa e a orquestração como {@code ERRO} e grava o
+     * {@code callback.response} com o corpo do erro (ex.: payload de um 400 da API
+     * externa), para auditoria e consulta.
+     */
+    public void marcarErro(String nome, Object corpoErro) {
+        Etapa atual = exigirEtapa(nome);
+        atual.setStatus(StatusEtapa.ERRO);
+        if (corpoErro != null) {
+            if (atual.getCallback() == null) {
+                atual.setCallback(new RespostaEtapa(corpoErro));
+            } else {
+                atual.getCallback().setResponse(corpoErro);
+            }
+        }
         this.status = StatusOrquestracao.ERRO;
     }
 

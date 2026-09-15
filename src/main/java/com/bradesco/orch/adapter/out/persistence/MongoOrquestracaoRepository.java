@@ -76,12 +76,15 @@ public class MongoOrquestracaoRepository implements OrquestracaoRepository {
         Query q = new Query(Criteria.where("_id").is(orquestracaoId)
                 .and("etapas").elemMatch(Criteria.where("name").is(etapa)
                         .and("status").is(StatusEtapa.PENDENTE_DE_INTERACAO.name())));
+        String tipo = registroInteracao.getTipo() != null
+                ? registroInteracao.getTipo().name().toLowerCase()
+                : null;
         Update u = new Update()
                 .set("etapas.$.status", StatusEtapa.PENDENTE.name())
                 .set("etapas.$.interacao", new RegistroInteracaoDocument(
-                        registroInteracao.getAprovadoPor(),
+                        tipo,
                         registroInteracao.getAprovadoEm(),
-                        registroInteracao.getObservacao()))
+                        registroInteracao.getDados()))
                 .inc("version", 1)
                 .currentDate("dataAtualizacao");
 

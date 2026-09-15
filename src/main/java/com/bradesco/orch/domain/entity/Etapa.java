@@ -41,18 +41,8 @@ public class Etapa {
         this.interacao = interacao;
     }
 
-    /** {@code true} quando a etapa está apta a ser executada ({@code PENDENTE}). */
-    public boolean podeExecutar() {
-        return status == StatusEtapa.PENDENTE;
-    }
-
     /** {@code true} quando o controle de tentativas atingiu o limite configurado. */
     public boolean atingiuLimite() {
         return controle != null && controle.atingiuLimite();
-    }
-
-    /** {@code true} quando a etapa está suspensa aguardando interação humana. */
-    public boolean aguardaInteracao() {
-        return status == StatusEtapa.PENDENTE_DE_INTERACAO;
     }
 }

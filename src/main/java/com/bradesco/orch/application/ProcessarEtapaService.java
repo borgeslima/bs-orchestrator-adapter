@@ -1,14 +1,20 @@
 package com.bradesco.orch.application;
 
 import com.bradesco.orch.domain.entity.Etapa;
+import com.bradesco.orch.domain.entity.HistoricoCredito;
+import com.bradesco.orch.domain.entity.HistoricoNegocioCapGiro;
 import com.bradesco.orch.domain.entity.Orquestracao;
+import com.bradesco.orch.domain.entity.RespostaEtapa;
+import com.bradesco.orch.domain.entity.SituacaoCredito;
 import com.bradesco.orch.domain.entity.StatusEtapa;
 import com.bradesco.orch.domain.port.in.ProcessarEtapaComando;
 import com.bradesco.orch.domain.port.in.ProcessarEtapaUseCase;
 import com.bradesco.orch.domain.port.in.ResultadoProcessamento;
+import com.bradesco.orch.domain.port.out.CreditoRepository;
 import com.bradesco.orch.domain.port.out.EtapaProcessor;
+import com.bradesco.orch.domain.port.out.FalhaDefinitivaEtapaException;
 import com.bradesco.orch.domain.port.out.EtapaProcessorRegistry;
-import com.bradesco.orch.domain.port.out.InteracaoHumanaPolicy;
+import com.bradesco.orch.domain.port.out.InteracaoPolicy;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
 import com.bradesco.orch.domain.port.out.MensagemPublisher;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
@@ -16,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -30,18 +37,21 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
     private static final Logger log = LoggerFactory.getLogger(ProcessarEtapaService.class);
 
     private final OrquestracaoRepository repository;
+    private final CreditoRepository creditoRepository;
     private final EtapaProcessorRegistry registry;
     private final MensagemPublisher publisher;
-    private final InteracaoHumanaPolicy interacaoHumanaPolicy;
+    private final InteracaoPolicy interacaoPolicy;
 
     public ProcessarEtapaService(OrquestracaoRepository repository,
+                                 CreditoRepository creditoRepository,
                                  EtapaProcessorRegistry registry,
                                  MensagemPublisher publisher,
-                                 InteracaoHumanaPolicy interacaoHumanaPolicy) {
+                                 InteracaoPolicy interacaoPolicy) {
         this.repository = repository;
+        this.creditoRepository = creditoRepository;
         this.registry = registry;
         this.publisher = publisher;
-        this.interacaoHumanaPolicy = interacaoHumanaPolicy;
+        this.interacaoPolicy = interacaoPolicy;
     }
 
     @Override
@@ -109,15 +119,21 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
                                                      EtapaProcessor processor,
                                                      ProcessarEtapaComando comando) {
         try {
-            Object input = processor.execute(null);
-            processor.callback(input);
-
-            // Ja retomada por aprovacao humana nesta rodada: nao suspende de novo,
-            // segue direto para a conclusao/avanco normal.
+            // Monta o input do processor com a seguinte precedencia:
+            // 1) dados da interacao, quando a etapa foi retomada por aprovacao;
+            // 2) callback.response da etapa anterior, quando o processor declara
+            //    que depende dela (dependeDaEtapaAnterior());
+            // 3) null (execucao normal, sem encadeamento).
             boolean jaAprovada = etapa.getInteracao() != null;
-            if (!jaAprovada && interacaoHumanaPolicy.requerInteracao(comando.etapa(), input)) {
+            Object input = montarInput(orquestracao, etapa, processor, jaAprovada);
+
+            // 'resultado' e o callback desta etapa: persistido e avaliado adiante.
+            Object resultado = processor.execute(input);
+            processor.callback(resultado);
+
+            if (!jaAprovada && interacaoPolicy.requerInteracao(comando.etapa(), resultado)) {
                 // Suspende no ponto: NAO conclui, NAO avanca, NAO publica proxima etapa.
-                orquestracao.suspenderPorInteracao(comando.etapa(), input);
+                orquestracao.suspenderPorInteracao(comando.etapa(), resultado);
                 repository.atualizar(orquestracao);
                 log.info("Etapa {} suspensa aguardando interacao humana (PENDENTE_DE_INTERACAO)",
                         comando.etapa());
@@ -125,13 +141,26 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
             }
 
             // Sucesso: conclui a etapa (grava callback.response) e avanca/conclui
-            Optional<Etapa> proxima = orquestracao.concluirEtapaEAvancar(comando.etapa(), input);
+            Optional<Etapa> proxima = orquestracao.concluirEtapaEAvancar(comando.etapa(), resultado);
             repository.atualizar(orquestracao);
+
+            // Atualiza o historico de negocio (credito) refletindo a etapa concluida.
+            registrarHistoricoNegocio(orquestracao.getId(), comando.etapa());
 
             proxima.ifPresent(prox -> publisher.publicar(
                     new MensagemEtapa(orquestracao.getId(), prox.getName(), comando.correlationId())));
 
             return ResultadoProcessamento.SUCESSO;
+        } catch (FalhaDefinitivaEtapaException falha) {
+            // Falha definitiva (ex.: 400 da API externa): NAO retenta. Grava o
+            // corpo do erro no callback da etapa e finaliza como ERRO.
+            log.warn("Falha definitiva na etapa {} -> ERRO_FINAL (corpo do erro salvo no callback)",
+                    comando.etapa());
+            orquestracao.marcarErro(comando.etapa(), falha.getCorpoErro());
+            repository.atualizar(orquestracao);
+            registrarHistorico(orquestracao.getId(), SituacaoCredito.ERRO,
+                    "Falha na etapa " + comando.etapa());
+            return ResultadoProcessamento.ERRO_FINAL;
         } catch (RuntimeException erro) {
             return tratarFalha(orquestracao, etapa, comando, erro);
         }
@@ -146,6 +175,9 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
             log.warn("Etapa {} atingiu o limite de tentativas -> ERRO_FINAL", comando.etapa(), erro);
             orquestracao.marcarErro(comando.etapa());
             repository.atualizar(orquestracao);
+            // Reflete a falha definitiva no historico de negocio.
+            registrarHistorico(orquestracao.getId(), SituacaoCredito.ERRO,
+                    "Falha na etapa " + comando.etapa());
             return ResultadoProcessamento.ERRO_FINAL;
         }
         log.info("Falha transitoria na etapa {} (tentativa {}/{}) -> RETENTAR",
@@ -156,5 +188,45 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
         etapa.setStatus(StatusEtapa.PENDENTE);
         repository.atualizar(orquestracao);
         return ResultadoProcessamento.RETENTAR;
+    }
+
+    /**
+     * Resolve o input do processor conforme a precedencia: (1) dados da interacao
+     * se a etapa foi retomada por aprovacao; (2) callback.response da etapa
+     * anterior se o processor declara depender dela; (3) null.
+     */
+    private Object montarInput(Orquestracao orquestracao, Etapa etapa,
+                               EtapaProcessor<?, ?> processor, boolean jaAprovada) {
+        if (jaAprovada && etapa.getInteracao() != null) {
+            return etapa.getInteracao().getDados();
+        }
+        if (processor.dependeDaEtapaAnterior()) {
+            return orquestracao.etapaAnterior(etapa.getName())
+                    .map(Etapa::getCallback)
+                    .map(RespostaEtapa::getResponse)
+                    .orElse(null);
+        }
+        return null;
+    }
+
+    /** Registra no historico do credito a conclusao (de negocio) da etapa informada. */
+    private void registrarHistoricoNegocio(String creditoId, String etapa) {
+        registrarHistorico(creditoId,
+                HistoricoNegocioCapGiro.situacaoAoConcluir(etapa),
+                HistoricoNegocioCapGiro.descricaoAoConcluir(etapa));
+    }
+
+    /** Adiciona (append) uma entrada ao historico do credito, sem interromper o fluxo em falha. */
+    private void registrarHistorico(String creditoId, SituacaoCredito situacao, String descricao) {
+        try {
+            Instant agora = Instant.now();
+            creditoRepository.registrarHistorico(creditoId,
+                    new HistoricoCredito(situacao, descricao, agora, agora));
+        } catch (RuntimeException e) {
+            // O historico de negocio e complementar ao motor: falha ao registrar
+            // nao deve derrubar o processamento da etapa.
+            log.warn("Falha ao registrar historico de negocio do credito {} ({}): {}",
+                    creditoId, situacao, e.getMessage());
+        }
     }
 }

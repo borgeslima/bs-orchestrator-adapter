@@ -13,7 +13,7 @@
     <aside class="sidebar">
         <div class="brand">
             <h1><span class="dot"></span> orch-poc</h1>
-            <span class="ver">v1.0.0</span>
+            <span class="ver">v1.1.0</span>
         </div>
         <nav>
             <div class="group-title">Documentação</div>
@@ -70,7 +70,7 @@
         <p>Organização por Arquitetura Hexagonal sob <code>com.bradesco.orch</code>:</p>
         <pre><code>com.bradesco.orch
 ├── domain
-│   ├── entity        # Orquestracao, Etapa, Controle, RespostaEtapa, RegistroInteracao...
+│   ├── entity        # Orquestracao, Etapa, Controle, RespostaEtapa, RegistroInteracao, TipoInteracao...
 │   └── port
 │       ├── in        # UseCases + comandos + resultados
 │       └── out       # OrquestracaoRepository, MensagemPublisher, EtapaProcessor...
@@ -83,7 +83,7 @@
 │       ├── persistence  # Mongo repository, documents, mapper
 │       ├── messaging    # ServiceBusMensagemPublisher
 │       ├── processor    # Processors de etapa + registry + client mock
-│       └── policy       # Policy de interação humana
+│       └── policy       # InteracaoPolicy (interação humana ou de máquina)
 └── config            # Mongo, ServiceBus, RestClient, OpenApi, Jackson</code></pre>
 
         <!-- ---------- Config ---------- -->
@@ -97,6 +97,7 @@
                 <tr><td><code>SERVICEBUS_CONNECTION_STRING</code></td><td>Conexão do Azure Service Bus.</td></tr>
                 <tr><td><code>SERVICEBUS_FILA</code></td><td>Nome da fila (padrão <code>orchestration</code>).</td></tr>
                 <tr><td><code>ETAPAS_ENDPOINT</code></td><td>Base URL do mock das etapas.</td></tr>
+                <tr><td><code>ETAPAS_INTERACAO_HUMANA</code></td><td>Nomes canônicos de etapas (separados por vírgula) que exigem interação/aprovação antes de avançar. Vazio = fluxo automático.</td></tr>
                 <tr><td><code>SWAGGER_UI_PATH</code> / <code>API_DOCS_PATH</code></td><td>Paths do Swagger / OpenAPI.</td></tr>
             </tbody>
         </table>
@@ -126,6 +127,15 @@
             <thead><tr><th>Versão</th><th>Data</th><th>Mudanças</th></tr></thead>
             <tbody>
                 <tr>
+                    <td><span class="pill info">v1.1.0</span></td>
+                    <td>2026-09-15</td>
+                    <td>Endpoint de aprovação
+                    (<code>POST /cap-giro/{id}/etapas/{etapa}/aprovar</code>) e interação genérica:
+                    <code>InteracaoPolicy</code> e <code>RegistroInteracao</code> passam a registrar
+                    apenas <code>tipo</code> (<code>HUMANA</code>/<code>MAQUINA</code>) e
+                    <code>aprovadoEm</code>.</td>
+                </tr>
+                <tr>
                     <td><span class="pill info">v1.0.0</span></td>
                     <td>2026-09-11</td>
                     <td>Versão inicial. Fluxo de orquestração cap-giro, 3 endpoints REST
@@ -136,12 +146,12 @@
         </table>
         <div class="note tip">
             <strong>Convenção.</strong> Incremente <code>MAJOR</code> em mudanças incompatíveis de
-            contrato, <code>MINOR</code> em novas funcionalidades retrocompatíveis (ex.: endpoint de
-            aprovação humana) e <code>PATCH</code> em correções e ajustes de documentação.
+            contrato, <code>MINOR</code> em novas funcionalidades retrocompatíveis e
+            <code>PATCH</code> em correções e ajustes de documentação.
         </div>
 
         <footer class="docfooter">
-            <span>orch-poc · Documentação v1.0.0</span>
+            <span>orch-poc · Documentação v1.1.0</span>
             <span>Pacote <code>com.bradesco.orch</code></span>
         </footer>
     </main>

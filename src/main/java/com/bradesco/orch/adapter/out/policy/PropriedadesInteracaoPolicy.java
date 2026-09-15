@@ -1,6 +1,6 @@
 package com.bradesco.orch.adapter.out.policy;
 
-import com.bradesco.orch.domain.port.out.InteracaoHumanaPolicy;
+import com.bradesco.orch.domain.port.out.InteracaoPolicy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -8,8 +8,8 @@ import java.util.Arrays;
 import java.util.Set;
 
 /**
- * Implementação simples da {@link InteracaoHumanaPolicy}, baseada em uma lista
- * de nomes de etapas configurada via propriedade externalizada
+ * Implementação simples da {@link InteracaoPolicy}, baseada em uma lista de nomes
+ * de etapas configurada via propriedade externalizada
  * {@code orch.etapas.interacao-humana} (nomes canônicos separados por vírgula).
  *
  * <p>Qualquer etapa cujo nome esteja nessa lista é suspensa em
@@ -18,11 +18,11 @@ import java.util.Set;
  * vazia) — comportamento 100% automático, compatível com o fluxo existente.</p>
  */
 @Component
-public class PropriedadesInteracaoHumanaPolicy implements InteracaoHumanaPolicy {
+public class PropriedadesInteracaoPolicy implements InteracaoPolicy {
 
     private final Set<String> etapasComInteracao;
 
-    public PropriedadesInteracaoHumanaPolicy(
+    public PropriedadesInteracaoPolicy(
             @Value("${orch.etapas.interacao-humana:}") String etapasConfiguradas) {
         this.etapasComInteracao = parse(etapasConfiguradas);
     }
