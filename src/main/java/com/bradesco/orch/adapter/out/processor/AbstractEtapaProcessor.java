@@ -15,8 +15,7 @@ import java.util.UUID;
  * devolve o resultado como <b>mapa genérico</b> ({@code { "id": ... }}).
  *
  * <p>O motor de orquestração é agnóstico: o callback trafega entre etapas como
- * {@code Map<String,Object>}, permitindo que um manipulador de campos
- * (selecionar/renomear/enriquecer) atue sem conhecer tipos de negócio.</p>
+ * {@code Map<String,Object>}, sem que o motor conheça tipos de negócio.</p>
  *
  * <p><b>Ponto de extensão (DTO tipado):</b> um processor concreto que prefira
  * trabalhar com um DTO em vez do mapa genérico pode sobrescrever

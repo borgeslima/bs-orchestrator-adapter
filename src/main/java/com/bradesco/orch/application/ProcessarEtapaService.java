@@ -15,7 +15,6 @@ import com.bradesco.orch.domain.port.out.EtapaProcessor;
 import com.bradesco.orch.domain.port.out.FalhaDefinitivaEtapaException;
 import com.bradesco.orch.domain.port.out.EtapaProcessorRegistry;
 import com.bradesco.orch.domain.port.out.InteracaoPolicy;
-import com.bradesco.orch.domain.port.out.ManipuladorEntradaRegistry;
 import com.bradesco.orch.domain.port.out.MensagemEtapa;
 import com.bradesco.orch.domain.port.out.MensagemPublisher;
 import com.bradesco.orch.domain.port.out.OrquestracaoRepository;
@@ -42,20 +41,17 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
     private final EtapaProcessorRegistry registry;
     private final MensagemPublisher publisher;
     private final InteracaoPolicy interacaoPolicy;
-    private final ManipuladorEntradaRegistry manipuladorRegistry;
 
     public ProcessarEtapaService(OrquestracaoRepository repository,
                                  CreditoRepository creditoRepository,
                                  EtapaProcessorRegistry registry,
                                  MensagemPublisher publisher,
-                                 InteracaoPolicy interacaoPolicy,
-                                 ManipuladorEntradaRegistry manipuladorRegistry) {
+                                 InteracaoPolicy interacaoPolicy) {
         this.repository = repository;
         this.creditoRepository = creditoRepository;
         this.registry = registry;
         this.publisher = publisher;
         this.interacaoPolicy = interacaoPolicy;
-        this.manipuladorRegistry = manipuladorRegistry;
     }
 
     @Override
@@ -201,33 +197,16 @@ public class ProcessarEtapaService implements ProcessarEtapaUseCase {
      */
     private Object montarInput(Orquestracao orquestracao, Etapa etapa,
                                EtapaProcessor<?, ?> processor, boolean jaAprovada) {
-        // 1. Resolve o payload bruto (origem do input).
-        Object bruto;
         if (jaAprovada && etapa.getInteracao() != null) {
-            bruto = etapa.getInteracao().getDados();
-        } else if (processor.dependeDaEtapaAnterior()) {
-            bruto = orquestracao.etapaAnterior(etapa.getName())
+            return etapa.getInteracao().getDados();
+        }
+        if (processor.dependeDaEtapaAnterior()) {
+            return orquestracao.etapaAnterior(etapa.getName())
                     .map(Etapa::getCallback)
                     .map(RespostaEtapa::getResponse)
                     .orElse(null);
-        } else {
-            bruto = null;
         }
-
-        // 2. Aplica o manipulador de campos da etapa, se declarado. O motor
-        //    permanece agnostico: so transforma quando ha um manipulador.
-        return manipuladorRegistry.localizar(etapa.getName())
-                .map(manipulador -> (Object) manipulador.manipular(comoMapa(bruto)))
-                .orElse(bruto);
-    }
-
-    /** Converte o payload bruto em mapa para o manipulador; {@code null}/nao-mapa vira mapa vazio. */
-    @SuppressWarnings("unchecked")
-    private java.util.Map<String, Object> comoMapa(Object bruto) {
-        if (bruto instanceof java.util.Map<?, ?> mapa) {
-            return (java.util.Map<String, Object>) mapa;
-        }
-        return java.util.Map.of();
+        return null;
     }
 
     /** Registra no historico do credito a conclusao (de negocio) da etapa informada. */

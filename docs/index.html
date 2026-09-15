@@ -29,6 +29,8 @@
             <a href="#fluxo" class="sub">Fluxo passo a passo</a>
             <a href="#idempotencia" class="sub">Idempotência e retry</a>
             <a href="#interacao" class="sub">Interação (aprovação)</a>
+            <a href="#encadeamento" class="sub">Encadeamento entre etapas</a>
+            <a href="#credito" class="sub">Crédito (negócio)</a>
         </nav>
     </aside>
 
@@ -72,7 +74,7 @@
                 <h3>Application</h3>
                 <p>Casos de uso: <code>IniciarOrquestracaoService</code>,
                 <code>ProcessarEtapaService</code>, <code>ConsultarOrquestracaoService</code>,
-                <code>AprovarEtapaService</code>.</p>
+                <code>ConsultarCreditoService</code>, <code>AprovarEtapaService</code>.</p>
             </div>
             <div class="card">
                 <h3>Adapters IN</h3>
@@ -81,8 +83,9 @@
             </div>
             <div class="card">
                 <h3>Adapters OUT</h3>
-                <p>Mongo (<code>OrquestracaoRepository</code>), Service Bus
-                (<code>MensagemPublisher</code>), processors de etapa e <code>InteracaoPolicy</code>.</p>
+                <p>Mongo (<code>OrquestracaoRepository</code>, <code>CreditoRepository</code>),
+                Service Bus (<code>MensagemPublisher</code>), processors de etapa,
+                <code>InteracaoPolicy</code> e manipuladores de entrada.</p>
             </div>
         </div>
         <div class="note tip">
@@ -194,7 +197,8 @@
                 <div class="num">7</div>
                 <div class="body">
                     <h4>Concluir e avançar</h4>
-                    <p>Grava <code>callback.response</code>, marca a etapa <code>CONCLUIDA</code> e
+                    <p>Grava <code>callback.response</code> (mapa genérico), marca a etapa
+                    <code>CONCLUIDA</code>, atualiza o histórico do <a href="#credito">crédito</a> e
                     publica a próxima etapa. Se for a última, marca a orquestração
                     <code>CONCLUIDA</code>.</p>
                 </div>
@@ -235,6 +239,14 @@
             retornam <code>RETENTAR</code> (o Service Bus reentrega). Quando
             <code>tentativas_realizadas</code> atinge o limite (3), a etapa vira <code>ERRO</code>,
             retorna <code>ERRO_FINAL</code> e a mensagem vai para a dead-letter queue.
+        </div>
+        <div class="note">
+            <strong>Falha definitiva (400).</strong> Se a API externa responde
+            <code>400 Bad Request</code>, o erro é tratado como <strong>determinístico</strong>: não
+            há retentativa. O motor lança <code>FalhaDefinitivaEtapaException</code>, grava o
+            <em>corpo do erro</em> em <code>etapas[].callback.response</code>, marca a etapa
+            <code>ERRO</code> e retorna <code>ERRO_FINAL</code> (dead-letter). Demais erros (5xx,
+            timeout) seguem o fluxo de retry acima.
         </div>
 
         <!-- ---------- Interação (aprovação) ---------- -->

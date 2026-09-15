@@ -26,11 +26,9 @@ public class FormalizacaoProcessor extends AbstractEtapaProcessor {
     }
 
     /**
-     * Exemplo do ponto de extensão com <b>DTO tipado</b> (sem manipulador): o input
-     * (callback da simulação) é convertido em {@link SimulacaoCallback} e o request
-     * é montado a partir dele, com segurança de tipo. Se a etapa também tivesse um
-     * manipulador registrado, o input já viria transformado — por isso, ao optar
-     * pelo DTO aqui, não se registra um manipulador para esta etapa.
+     * Ponto de extensão com <b>DTO tipado</b>: o input (callback da simulação) é
+     * convertido em {@link SimulacaoCallback} e o request é montado a partir dele,
+     * com segurança de tipo.
      */
     @Override
     protected EtapaRequest montarRequest(Object input) {
